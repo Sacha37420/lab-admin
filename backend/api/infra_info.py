@@ -52,19 +52,21 @@ def hosted_apps() -> list[dict]:
 
 
 def admin_tools() -> list[dict]:
-    """Liens vers les outils d'administration du lab (jamais de contenu .env brut)."""
+    """Liens vers les outils d'administration du lab (jamais de contenu .env brut).
+
+    Keycloak passe par Caddy (routage par chemin, cf. KEYCLOAK_PUBLIC_URL) donc
+    reste joignable en WAN comme en LAN. pgAdmin et phpLDAPadmin, eux, ne sont
+    PAS routés par Caddy — publiés en HTTP brut sur leur port dédié
+    (docker-compose.yml de sso-lab/infra), et ces deux ports ne sont jamais
+    ouverts sur le routeur (cf. scripts/open-bbox-ports2.sh) : contrairement
+    aux apps, il n'y a aucune barrière Keycloak devant eux, ils ne doivent
+    donc être joignables qu'en LAN. Un lien construit sur DOMAIN + ces ports
+    ne fonctionnerait de toute façon jamais (rien n'écoute côté WAN) — c'est
+    l'IP LAN, en HTTP, qu'il faut utiliser dans tous les cas.
+    """
     kc_url = getattr(settings, 'KEYCLOAK_PUBLIC_URL', '') or 'http://localhost:8080'
     kc_realm = getattr(settings, 'KEYCLOAK_REALM', '') or 'ssolab'
-    domain = getattr(settings, 'DOMAIN', '') or ''
-
-    if domain and domain != 'CHANGE_ME':
-        base = f'https://{domain}'
-        ldap_url = f'{base}:8081'
-        pgadmin_url = f'{base}:5050'
-    else:
-        base = kc_url.rstrip('/').rsplit(':', 1)[0] if '://' in kc_url else 'http://localhost'
-        ldap_url = f'{base}:8081'
-        pgadmin_url = f'{base}:5050'
+    lan_base = (getattr(settings, 'SERVER_URL_LAN', '') or 'http://localhost').rstrip('/')
 
     return [
         {
@@ -74,12 +76,12 @@ def admin_tools() -> list[dict]:
         },
         {
             'name': 'pgAdmin',
-            'url': pgadmin_url,
-            'description': 'Interface web PostgreSQL (login SSO).',
+            'url': f'{lan_base}:5050',
+            'description': 'Interface web PostgreSQL (login SSO) — accessible en LAN uniquement.',
         },
         {
             'name': 'phpLDAPadmin',
-            'url': ldap_url,
-            'description': "Interface web de l'annuaire LDAP.",
+            'url': f'{lan_base}:8081',
+            'description': "Interface web de l'annuaire LDAP — accessible en LAN uniquement.",
         },
     ]

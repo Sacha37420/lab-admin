@@ -112,6 +112,7 @@ KEYCLOAK_ADMIN_BASE_URL = config('KEYCLOAK_ADMIN_BASE_URL', default='http://keyc
 # ── Lien de base du serveur (mêmes règles que reset_url.sh / scripts/add-user.sh) ──
 DOMAIN = config('DOMAIN', default='CHANGE_ME').strip()
 SERVER_URL_WAN = config('SERVER_URL_WAN', default='')
+SERVER_URL_LAN = config('SERVER_URL_LAN', default='')
 
 # ── Email (création d'utilisateur — lien serveur + groupes + mot de passe) ─────
 # Copiées une fois, à la main, depuis sso-lab/.env dans lab-admin/.env (pas de
