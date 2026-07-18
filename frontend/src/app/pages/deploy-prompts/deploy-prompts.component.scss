@@ -1,0 +1,55 @@
+.page { display: flex; flex-direction: column; height: calc(100vh - var(--nav-h)); padding: var(--space-4) var(--space-5) 0; overflow: hidden; }
+.page-title { font-size: var(--text-xl); font-weight: 800; margin-bottom: var(--space-1); color: var(--text); }
+.subtitle { color: var(--text-mute); font-size: var(--text-sm); margin-bottom: var(--space-3); code { background: var(--accent-tint); padding: 1px 5px; border-radius: 3px; font-family: var(--font-mono); color: var(--accent-deep); } }
+.state-msg { padding: var(--space-6); text-align: center; color: var(--text-mute); &.error { color: var(--danger); } }
+
+.layout { display: flex; gap: var(--space-4); flex: 1; min-height: 0; }
+
+.sidebar {
+  width: 220px; flex-shrink: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;
+
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+}
+
+.sidebar-title { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-mute); padding: var(--space-1) var(--space-2) var(--space-2); }
+
+.spec-item {
+  display: flex; flex-direction: column; align-items: flex-start;
+  padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); border: none;
+  background: transparent; cursor: pointer; text-align: left;
+  min-height: 44px; justify-content: center;
+  transition: background 0.1s;
+  &:hover { background: var(--accent-tint); }
+  &.active { background: var(--accent-tint); }
+}
+.spec-name { font-weight: 600; font-size: var(--text-sm); color: var(--text); }
+.spec-owner { font-size: var(--text-xs); color: var(--text-mute); }
+
+.prompt-area { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+.prompt-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-2) var(--space-4); background: var(--card); border: 1px solid var(--border);
+  border-bottom: none; border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  .prompt-label { font-size: var(--text-sm); font-weight: 600; color: var(--text); }
+}
+
+.btn-copy {
+  min-height: 36px; padding: 0 var(--space-4); border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--card); cursor: pointer; font-size: var(--text-sm); font-family: var(--font-ui); transition: all 0.15s;
+  &:hover { background: var(--accent-tint); border-color: var(--accent); color: var(--accent-deep); }
+  &.copied { background: var(--success-tint); border-color: var(--success); color: var(--success); }
+}
+
+.prompt-block {
+  flex: 1; overflow: auto; margin: 0;
+  padding: var(--space-4); font-size: var(--text-sm); line-height: 1.6;
+  font-family: var(--font-mono);
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  white-space: pre-wrap; word-break: break-word;
+
+  &::-webkit-scrollbar { width: 5px; height: 5px; }
+  &::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+}

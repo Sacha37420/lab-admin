@@ -1,0 +1,87 @@
+<div class="page">
+  <div class="page-header">
+    <h1>&lt;/&gt; Éditeur de code</h1>
+    <p class="subtitle">VS Code en ligne avec Claude Code intégré — accès sécurisé via SSO</p>
+  </div>
+
+  @if (available()) {
+    <div class="launch-card">
+      <div class="launch-icon">&#128736;</div>
+      <h2>code-server</h2>
+      <p>Votre environnement de développement complet, accessible depuis n'importe où.</p>
+      <a [href]="codeServerUrl" target="_blank" class="btn-launch">Ouvrir l'éditeur ↗</a>
+      <p class="launch-hint">S'ouvre dans un nouvel onglet — authentifié via Keycloak</p>
+    </div>
+  } @else {
+    <div class="unavailable-card">
+      <div class="unavail-icon">&#9888;</div>
+      <h2>Éditeur non disponible</h2>
+      <p>L'accès à code-server requiert HTTPS (cookies sécurisés pour oauth2-proxy).<br>
+         Utilisez l'URL publique <strong>https://sacha37420.hopto.org/code</strong> plutôt qu'une IP directe.</p>
+      <a href="https://sacha37420.hopto.org/code" target="_blank" class="btn-launch btn-warn">Accès direct ↗</a>
+    </div>
+  }
+
+  <section class="section">
+    <h2>Générer les prompts pour une app</h2>
+
+    <!-- Sélection du spec -->
+    <div class="spec-selector">
+      @if (specsLoading()) {
+        <p class="muted">Chargement des specs depuis App Builder…</p>
+      } @else if (specsError()) {
+        <p class="error-text">{{ specsError() }}</p>
+      } @else if (specs().length === 0) {
+        <p class="muted">Aucun spec dans App Builder — créez-en un d'abord.</p>
+      } @else {
+        <label class="select-label">Choisir un spec App Builder</label>
+        <select (change)="onSelect($event)" class="spec-select">
+          <option value="">— sélectionner —</option>
+          @for (s of specs(); track s.id) {
+            <option [value]="s.id">{{ s.name }}</option>
+          }
+        </select>
+      }
+    </div>
+
+    @if (selectedSpec()) {
+      <!-- Étape 1 : new-app.sh -->
+      <div class="prompt-block">
+        <div class="prompt-header">
+          <span class="step-badge">1</span>
+          <span>Depuis un terminal sur le serveur — créer le squelette</span>
+          <button class="btn-copy" (click)="copy(newAppCommand(), 'new-app')" [class.ok]="copied() === 'new-app'">
+            {{ copied() === 'new-app' ? '✓ Copié' : 'Copier' }}
+          </button>
+        </div>
+        <pre class="prompt-code">{{ newAppCommand() }}</pre>
+        <p class="prompt-hint">Ports calculés automatiquement depuis <code>.ports</code>. <code>4</code> = Django + Angular. Appuyer sur Entrée pour confirmer chaque valeur suggérée.</p>
+      </div>
+
+      <!-- Étape 2 : Claude Code -->
+      <div class="prompt-block">
+        <div class="prompt-header">
+          <span class="step-badge">2</span>
+          <span>Dans code-server — prompt Claude Code complet</span>
+          <button class="btn-copy" (click)="copy(claudePrompt(), 'claude')" [class.ok]="copied() === 'claude'">
+            {{ copied() === 'claude' ? '✓ Copié' : 'Copier' }}
+          </button>
+        </div>
+        <pre class="prompt-code">{{ claudePrompt() }}</pre>
+      </div>
+
+      <!-- Étape 3 : déploiement + validation via Claude Code -->
+      <div class="prompt-block">
+        <div class="prompt-header">
+          <span class="step-badge">3</span>
+          <span>Dans code-server — prompt Claude Code déploiement &amp; validation</span>
+          <button class="btn-copy" (click)="copy(deployPrompt(), 'deploy')" [class.ok]="copied() === 'deploy'">
+            {{ copied() === 'deploy' ? '✓ Copié' : 'Copier' }}
+          </button>
+        </div>
+        <pre class="prompt-code">{{ deployPrompt() }}</pre>
+        <p class="prompt-hint">Claude lance <code>setup2.sh</code>, vérifie les containers, les migrations et l'auth Keycloak — et documente chaque bug corrigé dans <code>~/dev/.debug/</code>.</p>
+      </div>
+    }
+  </section>
+</div>

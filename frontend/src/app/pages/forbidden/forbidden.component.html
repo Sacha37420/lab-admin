@@ -1,0 +1,15 @@
+<div class="forbidden-page">
+  <div class="forbidden-card">
+    <div class="forbidden-icon">🔒</div>
+    <h1>Accès restreint</h1>
+    <p>
+      Bonjour <strong>{{ kc.username }}</strong>, vous êtes bien authentifié(e).<br>
+      Cette application est réservée aux membres du groupe <code>admins</code>.
+    </p>
+    <p class="hint">
+      Demandez à un administrateur de vous ajouter au groupe LDAP
+      <code>admins</code> (annuaire OpenLDAP du realm <code>ssolab</code>).
+    </p>
+    <button (click)="kc.logout()">Se déconnecter</button>
+  </div>
+</div>

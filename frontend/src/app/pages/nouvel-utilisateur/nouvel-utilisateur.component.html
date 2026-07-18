@@ -1,0 +1,124 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Nouvel utilisateur</h1>
+    <p>Crée un compte dans l'annuaire du lab, l'assigne aux groupes choisis, lui envoie ses identifiants par email.</p>
+  </div>
+
+  @if (result(); as res) {
+
+    <!-- ── Récapitulatif après création ─────────────────────────────────── -->
+    <div class="env-card">
+      <div class="env-card-header">
+        <h2>Compte créé</h2>
+      </div>
+      <div class="result-body">
+        <dl class="result-grid">
+          <dt>Utilisateur</dt><dd>{{ res.username }}</dd>
+          <dt>Email</dt><dd>{{ res.email }}</dd>
+          <dt>Groupes</dt><dd>{{ res.groups.length ? res.groups.join(', ') : 'aucun' }}</dd>
+          <dt>Lien serveur</dt><dd>{{ res.base_url || '(non configuré)' }}</dd>
+        </dl>
+
+        @if (res.failed_groups.length) {
+          <div class="note" style="border-left-color:var(--warning); background:var(--warning-tint)">
+            ⚠ Groupe(s) non assigné(s) : {{ res.failed_groups.join(', ') }}
+          </div>
+        }
+
+        @if (res.email_sent) {
+          <div class="note" style="border-left-color:var(--success); background:var(--success-tint)">
+            ✓ Email envoyé à {{ res.email }}.
+          </div>
+        } @else {
+          <div class="note" style="border-left-color:var(--danger); background:var(--danger-tint)">
+            ⚠ Email non envoyé ({{ res.email_error }}) — communiquez le mot de passe manuellement.
+          </div>
+        }
+
+        <div class="password-row">
+          <span class="password-label">Mot de passe</span>
+          <code class="password-value">{{ res.password }}</code>
+          <button type="button" class="btn-secondary" (click)="copyPassword()">Copier</button>
+        </div>
+
+        <button type="button" class="btn-primary" (click)="reset()">Créer un autre utilisateur</button>
+      </div>
+    </div>
+
+  } @else {
+
+    <!-- ── Formulaire ────────────────────────────────────────────────────── -->
+    @if (groupsLoading()) {
+      <div class="loading-state"><span class="icon">⏳</span><span>Chargement des groupes…</span></div>
+    } @else {
+
+      @if (groupsError()) {
+        <div class="note" style="border-left-color:var(--danger); background:var(--danger-tint)">{{ groupsError() }}</div>
+      }
+
+      <div class="env-card">
+        <div class="env-card-header"><h2>Identité</h2></div>
+        <div class="form-body">
+          <label class="fld">
+            <span>Nom d'utilisateur</span>
+            <input type="text" [ngModel]="username()" (ngModelChange)="username.set($event)" placeholder="ex : julien" />
+          </label>
+          <div class="fld-row">
+            <label class="fld">
+              <span>Prénom</span>
+              <input type="text" [ngModel]="firstName()" (ngModelChange)="firstName.set($event)" />
+            </label>
+            <label class="fld">
+              <span>Nom</span>
+              <input type="text" [ngModel]="lastName()" (ngModelChange)="lastName.set($event)" />
+            </label>
+          </div>
+          <label class="fld">
+            <span>Email</span>
+            <input type="email" [ngModel]="email()" (ngModelChange)="email.set($event)" placeholder="ex : julien@example.com" />
+          </label>
+        </div>
+      </div>
+
+      <!-- ── Groupes requis par app (contexte) ────────────────────────────── -->
+      <div class="env-card">
+        <div class="env-card-header">
+          <h2>Groupes requis ou utiles par application</h2>
+        </div>
+        <div class="env-body">
+          @for (app of apps(); track app.name) {
+            <div class="env-line">
+              <span class="env-key">{{ app.name }}</span>
+              <span class="env-eq">:</span>
+              <span class="env-val">{{ app.required_groups.length ? app.required_groups.join(', ') : '(aucun — authentification seule)' }}</span>
+            </div>
+          }
+        </div>
+      </div>
+
+      <!-- ── Sélection des groupes ─────────────────────────────────────────── -->
+      <div class="env-card">
+        <div class="env-card-header"><h2>Groupes à attribuer</h2></div>
+        <div class="services-grid">
+          @for (g of groups(); track g.id) {
+            <label class="group-tile" [class.selected]="isSelected(g.name)">
+              <input type="checkbox" [checked]="isSelected(g.name)" (change)="toggleGroup(g.name)" />
+              <span class="svc-name">{{ g.name }}</span>
+              @if (g.required_by.length) {
+                <span class="svc-desc">requis par : {{ g.required_by.join(', ') }}</span>
+              }
+            </label>
+          }
+        </div>
+      </div>
+
+      @if (submitError()) {
+        <div class="note" style="border-left-color:var(--danger); background:var(--danger-tint)">{{ submitError() }}</div>
+      }
+
+      <button type="button" class="btn-primary" [disabled]="!formValid() || submitting()" (click)="submit()">
+        {{ submitting() ? 'Création…' : 'Créer le compte' }}
+      </button>
+    }
+  }
+</div>

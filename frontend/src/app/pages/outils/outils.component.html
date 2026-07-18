@@ -1,0 +1,36 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Outils</h1>
+    <p>Liens vers les interfaces d'administration du lab.</p>
+  </div>
+
+  @if (loading()) {
+    <div class="loading-state">
+      <span class="icon">⏳</span>
+      <span>Chargement…</span>
+    </div>
+  } @else if (error()) {
+    <div class="error-state">
+      <span class="icon">⚠️</span>
+      <span>{{ error() }}</span>
+    </div>
+  } @else {
+    <div class="env-card">
+      <div class="env-card-header">
+        <h2>Interfaces d'administration</h2>
+        <span class="env-path">accès réservé aux membres du groupe admins</span>
+      </div>
+      <div class="services-grid">
+        @for (tool of tools(); track tool.name) {
+          <div class="service-card">
+            <div class="svc-name">{{ tool.name }}</div>
+            <div class="svc-desc">{{ tool.description }}</div>
+            <div class="svc-url">
+              <a [href]="tool.url" target="_blank" rel="noopener">Ouvrir ↗</a>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  }
+</div>

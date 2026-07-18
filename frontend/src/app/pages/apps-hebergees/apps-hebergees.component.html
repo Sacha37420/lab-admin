@@ -1,0 +1,45 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Apps du lab</h1>
+    <p>Applications hébergées et leurs ports (source : <code>.ports</code>).</p>
+  </div>
+
+  @if (loading()) {
+    <div class="loading-state">
+      <span class="icon">⏳</span>
+      <span>Chargement…</span>
+    </div>
+  } @else if (error()) {
+    <div class="error-state">
+      <span class="icon">⚠️</span>
+      <span>{{ error() }}</span>
+    </div>
+  } @else {
+    <div class="env-card">
+      <div class="env-card-header">
+        <h2>Applications hébergées ({{ apps().length }})</h2>
+      </div>
+      <div class="services-grid">
+        @for (app of apps(); track app.name) {
+          <div class="service-card">
+            <div class="svc-name">{{ app.name }}</div>
+            <div class="svc-desc">
+              @if (app.backend_port) { backend :{{ app.backend_port }} }
+              @if (app.backend_port && app.frontend_port) { · }
+              @if (app.frontend_port) { frontend :{{ app.frontend_port }} }
+            </div>
+            <div class="svc-url">
+              @if (app.frontend_url) {
+                <a [href]="app.frontend_url" target="_blank" rel="noopener">Ouvrir ↗</a>
+              } @else if (app.backend_url) {
+                <a [href]="app.backend_url" target="_blank" rel="noopener">API ↗</a>
+              } @else {
+                <span style="color:var(--text-mute)">—</span>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  }
+</div>
