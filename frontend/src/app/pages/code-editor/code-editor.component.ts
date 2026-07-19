@@ -30,7 +30,7 @@ export class CodeEditorComponent implements OnInit {
   specs        = signal<PublicSpec[]>([]);
   specsLoading = signal(true);
   specsError   = signal('');
-  selectedId   = signal<string>('');
+  selectedId   = signal<string>(CUSTOM);
   copied       = signal('');
   hostedApps   = signal<HostedApp[]>([]);
 

@@ -14,12 +14,12 @@
         <p class="error-text">{{ specsError() }}</p>
       } @else {
         <label class="select-label">Application</label>
-        <select (change)="onSelect($event)" class="spec-select">
+        <select [value]="selectedId()" (change)="onSelect($event)" class="spec-select">
           <option value="">— sélectionner —</option>
+          <option value="custom">✦ Application personnalisée (hors App Builder)</option>
           @for (s of specs(); track s.id) {
             <option [value]="s.id">{{ s.name }}</option>
           }
-          <option value="custom">✦ Application personnalisée (hors App Builder)</option>
         </select>
       }
     </div>
