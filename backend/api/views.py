@@ -95,6 +95,7 @@ class LabUserGroupsView(APIView):
     def get(self, request):
         required_by = lab_groups.groups_required_by()
         app_groups = lab_groups.app_required_groups()
+        hidden = lab_groups.hidden_groups()
         try:
             groups = keycloak_admin.all_groups()
         except KeycloakAdminError as exc:
@@ -104,6 +105,7 @@ class LabUserGroupsView(APIView):
             'groups': [
                 {'id': g['id'], 'name': g['name'], 'required_by': required_by.get(g['name'], [])}
                 for g in sorted(groups, key=lambda g: g['name'])
+                if g['name'] not in hidden
             ],
             'apps': [
                 {'name': app, 'required_groups': gs}

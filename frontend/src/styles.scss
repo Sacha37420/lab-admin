@@ -117,7 +117,7 @@ code, pre, .mono { font-family: var(--font-mono); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
-/* ─── Chrome de page partagé (portée de front-cadriciel/src/styles.scss) ──
+/* ─── Chrome de page partagé ────────────────────────────────────────────
    Utilisé par les pages sans styleUrl propre : forbidden, create-project,
    et les nouvelles pages outils/apps-hebergees/nouvel-utilisateur. ────── */
 .page {

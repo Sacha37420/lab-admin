@@ -4,8 +4,8 @@ Fonctions simples plutôt que des ``ModelSerializer`` DRF : les modèles miroir
 (``models_appbuilder.py``) modélisent les tables de jonction M2M à la main
 (pas de vrai ``ManyToManyField``), ce que DRF sérialise mal par défaut. La
 forme de sortie correspond à ``PublicSpec`` (et types associés) de
-``front-cadriciel/src/app/core/lab-api.service.ts`` — contrat déjà consommé
-par les pages portées (dashboard, apps, code-editor, deploy-prompts).
+``frontend/src/app/core/lab-api.service.ts`` — contrat déjà consommé
+par les pages dashboard, apps, code-editor et deploy-prompts.
 """
 from __future__ import annotations
 

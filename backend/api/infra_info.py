@@ -9,13 +9,40 @@ jamais de dump brut d'un fichier ``.env``).
 """
 from __future__ import annotations
 
+import re
+
 from django.conf import settings
 
+from . import lab_groups
+
 _PORTS_FILE = '/mnt/ports'
+_DEV_ROOT = '/mnt/dev'
+_HANDLE_PATH_RE = re.compile(r'caddy\.handle_path:\s*"(/[^"]*)/\*"')
+
+
+def _caddy_paths(app: str) -> tuple[str | None, str | None]:
+    """(chemin_frontend, chemin_backend) déduits des labels caddy.handle_path
+    du docker-compose.yml de l'app — seule source de vérité du routage réel.
+    Le nom de dossier peut diverger du préfixe réel (ex: analyse-lora → /lora/),
+    d'où le bug historique des liens faux basés sur le nom de dossier. Même
+    logique que front_prefix() dans scripts/complete_404.sh."""
+    try:
+        with open(f'{_DEV_ROOT}/{app}/docker-compose.yml', encoding='utf-8') as f:
+            content = f.read()
+    except OSError:
+        return None, None
+    paths = _HANDLE_PATH_RE.findall(content)
+    backend = next((p for p in paths if p.endswith('-api')), None)
+    frontend = next((p for p in paths if not p.endswith('-api')), None)
+    return frontend, backend
 
 
 def hosted_apps() -> list[dict]:
+    """Apps affichées : limitées à .app-descriptions (mêmes apps que la page
+    404 — google-agenda et toute app volontairement tenue hors vitrine
+    n'apparaissent pas ici non plus)."""
     domain = getattr(settings, 'DOMAIN', '') or ''
+    listed = lab_groups.listed_apps()
     try:
         with open(_PORTS_FILE, encoding='utf-8') as f:
             content = f.read()
@@ -29,13 +56,16 @@ def hosted_apps() -> list[dict]:
             continue
         parts = line.split(':')
         name = parts[0]
+        if name not in listed:
+            continue
         backend_port = int(parts[1]) if len(parts) > 1 and parts[1] else None
         frontend_port = int(parts[2]) if len(parts) > 2 and parts[2] else None
 
         if domain and domain != 'CHANGE_ME':
             base = f'https://{domain}'
-            frontend_url = f'{base}/{name}/' if frontend_port else None
-            backend_url = f'{base}/{name}-api/' if backend_port else None
+            frontend_path, backend_path = _caddy_paths(name)
+            frontend_url = f'{base}{frontend_path}/' if frontend_path else None
+            backend_url = f'{base}{backend_path}/' if backend_path else None
         else:
             base = 'http://localhost'
             frontend_url = f'{base}:{frontend_port}/' if frontend_port else None

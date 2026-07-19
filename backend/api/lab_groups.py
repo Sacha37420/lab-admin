@@ -16,17 +16,54 @@ import os
 import re
 
 _DEV_ROOT = '/mnt/dev'
+_APP_DESCRIPTIONS = os.path.join(_DEV_ROOT, '.app-descriptions')
+_HIDDEN_GROUPS_FILE = os.path.join(_DEV_ROOT, '.hidden-groups')
 _REQUIRE_GROUP_RE = re.compile(r'--require-group\s+(\S+)')
 
 
+def listed_apps() -> set[str]:
+    """Apps listées dans .app-descriptions — même fichier de curation que la
+    page 404 (scripts/complete_404.sh) : seules ces apps sont éligibles à
+    apparaître dans les outils d'admin du lab (lab-admin, add-user.sh)."""
+    apps: set[str] = set()
+    try:
+        with open(_APP_DESCRIPTIONS, encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                apps.add(line.split('|', 1)[0].strip())
+    except OSError:
+        pass
+    return apps
+
+
+def hidden_groups() -> set[str]:
+    """Groupes listés dans .hidden-groups — jamais affichés, même s'ils
+    existent réellement dans l'annuaire LDAP et sont requis par une app."""
+    hidden: set[str] = set()
+    try:
+        with open(_HIDDEN_GROUPS_FILE, encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    hidden.add(line)
+    except OSError:
+        pass
+    return hidden
+
+
 def app_required_groups() -> dict[str, list[str]]:
-    """{nom_app: [groupe, ...]} — liste vide si l'app n'exige aucun groupe."""
+    """{nom_app: [groupe, ...]} — limité aux apps de .app-descriptions, et
+    aux groupes qui ne sont pas dans .hidden-groups."""
     result: dict[str, list[str]] = {}
     if not os.path.isdir(_DEV_ROOT):
         return result
 
+    listed = listed_apps()
+    hidden = hidden_groups()
     for name in sorted(os.listdir(_DEV_ROOT)):
-        if name in ('sso-lab', '_templates') or name.startswith('.'):
+        if name not in listed:
             continue
         opts_path = os.path.join(_DEV_ROOT, name, '.keycloak-client-opts')
         compose_path = os.path.join(_DEV_ROOT, name, 'docker-compose.yml')
@@ -39,7 +76,7 @@ def app_required_groups() -> dict[str, list[str]]:
             continue
         m = _REQUIRE_GROUP_RE.search(content)
         groups = [g.strip() for g in m.group(1).split(',') if g.strip()] if m else []
-        result[name] = groups
+        result[name] = [g for g in groups if g not in hidden]
     return result
 
 

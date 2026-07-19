@@ -210,13 +210,16 @@ Renseigner les champs obligatoires dans \`${slug}/.env\` :
 bash setup2.sh ${slug} --yes
 \`\`\`
 
-## Étape 6 — Mettre à jour le cadriciel
+## Étape 6 — Rendre l'app visible dans lab-admin et la page 404
 
-Pour que la nouvelle app apparaisse dans la liste du cadriciel :
+Ajouter une ligne dans \`.app-descriptions\` (racine du dépôt \`dev/\`) :
 
-\`\`\`bash
-bash setup2.sh front-cadriciel --yes
 \`\`\`
+${slug}|Nom affiché|Description courte.
+\`\`\`
+
+Aucun redémarrage requis : la page "Apps du lab" de lab-admin et la page 404
+lisent ce fichier à chaque requête.
 
 ---
 _Spec générée depuis App Builder — owner: ${spec.owner_email} — mise à jour: ${new Date(spec.updated_at).toLocaleString('fr-FR')}_
