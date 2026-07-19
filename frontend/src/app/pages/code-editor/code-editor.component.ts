@@ -1,71 +1,64 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
+import { LabApiService, PublicSpec, HostedApp } from '../../core/lab-api.service';
+import { NewAppGuideComponent } from '../../shared/new-app-guide/new-app-guide.component';
 
-interface HostedApp { name: string; backend_port: number | null; frontend_port: number | null }
-interface EnvWindow { __env?: { codeServerUrl?: string; apiUrl?: string } }
-
-interface AppSpec {
-  id: number;
-  name: string;
-  slug?: string;
-  description: string;
-  data_models: unknown[];
-  endpoint_groups: unknown[];
-  pages: unknown[];
-}
+interface EnvWindow { __env?: { codeServerUrl?: string } }
 
 function toSlug(name: string): string {
   return name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 }
 
+const CUSTOM = 'custom';
+
 @Component({
   selector: 'app-code-editor',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, NewAppGuideComponent],
   templateUrl: './code-editor.component.html',
   styleUrl: './code-editor.component.scss',
 })
 export class CodeEditorComponent implements OnInit {
-  private http = inject(HttpClient);
+  private api = inject(LabApiService);
 
   get codeServerUrl(): string {
     const url = (window as unknown as EnvWindow).__env?.codeServerUrl ?? '';
     return url && !url.endsWith('/') ? url + '/' : url;
   }
-  get apiUrl(): string {
-    return (window as unknown as EnvWindow).__env?.apiUrl ?? 'http://localhost:8083';
-  }
   available(): boolean { return !!this.codeServerUrl; }
 
-  specs        = signal<AppSpec[]>([]);
+  specs        = signal<PublicSpec[]>([]);
   specsLoading = signal(true);
   specsError   = signal('');
-  selectedId   = signal<number | null>(null);
+  selectedId   = signal<string>('');
   copied       = signal('');
   hostedApps   = signal<HostedApp[]>([]);
 
-  selectedSpec = computed(() => this.specs().find(s => s.id === this.selectedId()) ?? null);
+  selectedSpec = computed(() => {
+    const v = this.selectedId();
+    if (!v || v === CUSTOM) return null;
+    return this.specs().find(s => s.id === +v) ?? null;
+  });
+  isCustom = computed(() => this.selectedId() === CUSTOM);
 
   ngOnInit() {
-    this.http.get<AppSpec[]>(`${this.apiUrl}/api/apps/public/`).subscribe({
+    this.api.getAllSpecs().subscribe({
       next:  s  => { this.specs.set(s); this.specsLoading.set(false); },
       error: () => { this.specsError.set("Impossible de charger le catalogue des apps"); this.specsLoading.set(false); },
     });
-    this.http.get<{ apps: HostedApp[] }>(`${this.apiUrl}/api/infrastructure/`).subscribe({
+    this.api.getInfrastructure().subscribe({
       next: res => this.hostedApps.set(res.apps ?? []),
       error: () => {},
     });
   }
 
   onSelect(event: Event) {
-    const v = (event.target as HTMLSelectElement).value;
-    this.selectedId.set(v ? +v : null);
+    this.selectedId.set((event.target as HTMLSelectElement).value);
   }
 
   appSlug(): string {
     const s = this.selectedSpec();
-    return s ? (s.slug ?? toSlug(s.name)) : 'mon-app';
+    return s ? toSlug(s.name) : 'mon-app';
   }
 
   nextPorts(): { backend: number; frontend: number } {

@@ -9,27 +9,9 @@ export const routes: Routes = [
     canActivate: [adminGuard],
   },
   {
-    path: 'apps',
-    loadComponent: () =>
-      import('./pages/apps/apps.component').then(m => m.AppsComponent),
-    canActivate: [adminGuard],
-  },
-  {
     path: 'code',
     loadComponent: () =>
       import('./pages/code-editor/code-editor.component').then(m => m.CodeEditorComponent),
-    canActivate: [adminGuard],
-  },
-  {
-    path: 'deploy-prompts',
-    loadComponent: () =>
-      import('./pages/deploy-prompts/deploy-prompts.component').then(m => m.DeployPromptsComponent),
-    canActivate: [adminGuard],
-  },
-  {
-    path: 'create-project',
-    loadComponent: () =>
-      import('./pages/create-project/create-project.component').then(m => m.CreateProjectComponent),
     canActivate: [adminGuard],
   },
   {

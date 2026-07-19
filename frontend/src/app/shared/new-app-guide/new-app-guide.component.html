@@ -1,0 +1,121 @@
+<div class="steps">
+
+  <!-- ── Étape 1 ──────────────────────────────────────────────────────── -->
+  <div class="step">
+    <div class="step-number">1</div>
+    <div class="step-content">
+      <h2>Scaffold — <code>new-app.sh</code></h2>
+      <p>Depuis la racine <code>dev/</code> :</p>
+      <pre><code class="code-block">bash scripts/new-app.sh</code></pre>
+      <p>Le script demande, dans l'ordre :</p>
+      <ul style="color:var(--text-mute);font-size:var(--text-sm);padding-left:1.5rem;line-height:2">
+        <li><strong>Nom</strong> de l'application (minuscules + tirets, ex : <code>mon-app</code>)</li>
+        <li><strong>Type</strong> : Spring Boot seul / Spring+Angular / Django seul / Django+Angular / Angular seul</li>
+        <li><strong>Port backend</strong> (suggéré automatiquement, ≥ 8083)</li>
+        <li><strong>Port frontend</strong> (suggéré automatiquement, ≥ 4200)</li>
+        <li><strong>Scaffold</strong> via Docker (répondre <code>O</code>)</li>
+        <li><strong>Groupe requis</strong> pour le cloisonnement (voir étape 3)</li>
+        <li>Pour une app avec base : <strong>instance PostgreSQL</strong> — <code>postgres</code> (partagée, défaut) ou <code>postgis</code> (SIG uniquement)</li>
+      </ul>
+      <div class="note">
+        Il crée <code>dev/&lt;app&gt;/</code> complet (backend, frontend, docker-compose, Dockerfiles, nginx, <code>.env</code>…),
+        ajoute l'app au <code>.gitignore</code> du dépôt parent, enregistre les ports dans <code>.ports</code>,
+        ajoute le schéma dans <code>infra/init/00_schemas.sql</code> et crée <code>.keycloak-client-opts</code>.
+        Il ne crée <strong>ni</strong> le dépôt GitHub <strong>ni</strong> le client Keycloak.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Étape 2 ──────────────────────────────────────────────────────── -->
+  <div class="step">
+    <div class="step-number">2</div>
+    <div class="step-content">
+      <h2>Dépôt GitHub + sous-module</h2>
+      <p>L'app devient un sous-module git pointant vers son propre dépôt <code>Sacha37420/&lt;app&gt;</code> :</p>
+      <pre><code class="code-block">cd mon-app
+git init && git checkout -b main
+git add . && git commit -m "feat: initial scaffold"
+gh repo create Sacha37420/mon-app --public
+git remote add origin https://github.com/Sacha37420/mon-app.git
+git push -u origin main
+cd ..
+
+# Retirer du .gitignore (new-app.sh l'y avait ajouté) et enregistrer comme sous-module
+sed -i '/^mon-app\/$/d' .gitignore
+git submodule add https://github.com/Sacha37420/mon-app.git mon-app</code></pre>
+    </div>
+  </div>
+
+  <!-- ── Étape 3 ──────────────────────────────────────────────────────── -->
+  <div class="step">
+    <div class="step-number">3</div>
+    <div class="step-content">
+      <h2>Cloisonner l'app <span style="color:var(--text-mute);font-size:0.85em">(à ne pas sauter)</span></h2>
+      <p>
+        Le lab est <strong>exposé sur Internet</strong>. Être authentifié dans le realm <code>ssolab</code> ne doit donner accès
+        à rien : toute app se réserve à un ou plusieurs groupes LDAP via <code>--require-group</code> dans
+        <code>&lt;app&gt;/.keycloak-client-opts</code> :
+      </p>
+      <pre><code class="code-block">--public --port 4208 --caddy-path mon-app --require-group famille,amis</code></pre>
+      <div class="note">
+        <strong>Important :</strong> un nouvel inscrit n'a <strong>aucun</strong> groupe ⇒ accès à
+        <strong>aucune</strong> app. C'est voulu. Laisser <code>--require-group</code> vide rend l'app accessible
+        à tout compte du realm — <code>new-app.sh</code> le signale bruyamment si on le fait.
+      </div>
+      <p>Compléter aussi <code>mon-app/.env</code> (généré par le scaffold) : <code>SECRET_KEY</code>, <code>DEBUG=True</code> en dev,
+        <code>DOMAIN=CHANGE_ME</code> tant que le lab reste en HTTP local.</p>
+    </div>
+  </div>
+
+  <!-- ── Étape 4 ──────────────────────────────────────────────────────── -->
+  <div class="step">
+    <div class="step-number">4</div>
+    <div class="step-content">
+      <h2>Déploiement complet — <code>setup2.sh</code></h2>
+      <pre><code class="code-block">bash scripts/setup2.sh mon-app --yes</code></pre>
+      <p>Ce script enchaîne, dans l'ordre :</p>
+      <ul style="color:var(--text-mute);font-size:var(--text-sm);padding-left:1.5rem;line-height:2">
+        <li><code>clean2.sh &lt;app&gt;</code> — arrête et supprime les containers de l'app</li>
+        <li><code>reset_url.sh</code> — propage LAN/WAN/Keycloak dans tous les <code>.env</code></li>
+        <li>Démarrage de <strong>sso-lab</strong> (Keycloak + LDAP + Caddy)</li>
+        <li>Attente que Keycloak réponde (jusqu'à 300 s)</li>
+        <li><strong><code>create-app-client.sh &lt;app&gt;</code></strong> — crée/met à jour le client Keycloak (secret, redirect URIs, claim <code>groups</code>, rôle <code>&lt;client&gt;-access</code>, flow <code>require-&lt;client&gt;</code>)</li>
+        <li><code>recompose_docker.sh --app &lt;app&gt; --force</code> — build et démarre les containers</li>
+        <li><code>get-ports-list.sh</code> — régénère <code>ports.env</code></li>
+        <li><code>open-bbox-ports2.sh</code> — ouvre les ports sur le routeur Bbox si accessible</li>
+      </ul>
+      <div class="note">
+        <code>create-app-client.sh</code> peut aussi être appelé seul pour recréer/mettre à jour un client sans tout redéployer :
+        <pre><code class="code-block">bash scripts/create-app-client.sh mon-app $(cat mon-app/.keycloak-client-opts)</code></pre>
+        Après tout changement de cloisonnement, tester dans les deux sens : un membre du groupe passe, un non-membre
+        (avec ou sans session SSO active) est refusé.
+      </div>
+    </div>
+  </div>
+
+</div><!-- /steps -->
+
+<!-- ── Référence rapide ───────────────────────────────────────────────── -->
+<div style="margin-top:3rem;padding-top:2rem;border-top:1px solid var(--border)">
+  <h2 style="color:var(--text);font-size:1.1rem;margin-bottom:1.25rem">Référence rapide</h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:1.25rem">
+      <div style="font-size:var(--text-xs);color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.75rem">Scripts</div>
+      <div class="mono" style="font-size:0.82rem;color:var(--text-mute);line-height:2.2">
+        <div><span style="color:var(--accent-deep)">new-app.sh</span> — scaffold interactif</div>
+        <div><span style="color:var(--accent-deep)">setup2.sh &lt;app&gt; --yes</span> — déploiement complet</div>
+        <div><span style="color:var(--accent-deep)">create-app-client.sh &lt;app&gt;</span> — client Keycloak seul</div>
+      </div>
+    </div>
+
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:1.25rem">
+      <div style="font-size:var(--text-xs);color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.75rem">Keycloak — realm ssolab</div>
+      <div class="mono" style="font-size:0.82rem;color:var(--text-mute);line-height:2.2">
+        <div>Issuer (Docker) : <span style="color:var(--accent)">http://keycloak:8080/realms/ssolab</span></div>
+        <div>Issuer (hôte) : <span style="color:var(--accent)">http://192.168.1.50:8080/realms/ssolab</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>

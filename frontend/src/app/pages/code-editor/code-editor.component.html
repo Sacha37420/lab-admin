@@ -1,50 +1,35 @@
 <div class="page">
   <div class="page-header">
-    <h1>&lt;/&gt; Éditeur de code</h1>
-    <p class="subtitle">VS Code en ligne avec Claude Code intégré — accès sécurisé via SSO</p>
+    <h1>&lt;/&gt; Code &amp; déploiement</h1>
+    <p class="subtitle">Choisissez une application ci-dessous pour obtenir ses commandes de création, puis retrouvez l'éditeur de code plus bas.</p>
   </div>
 
-  @if (available()) {
-    <div class="launch-card">
-      <div class="launch-icon">&#128736;</div>
-      <h2>code-server</h2>
-      <p>Votre environnement de développement complet, accessible depuis n'importe où.</p>
-      <a [href]="codeServerUrl" target="_blank" class="btn-launch">Ouvrir l'éditeur ↗</a>
-      <p class="launch-hint">S'ouvre dans un nouvel onglet — authentifié via Keycloak</p>
-    </div>
-  } @else {
-    <div class="unavailable-card">
-      <div class="unavail-icon">&#9888;</div>
-      <h2>Éditeur non disponible</h2>
-      <p>L'accès à code-server requiert HTTPS (cookies sécurisés pour oauth2-proxy).<br>
-         Utilisez l'URL publique <strong>https://sacha37420.hopto.org/code</strong> plutôt qu'une IP directe.</p>
-      <a href="https://sacha37420.hopto.org/code" target="_blank" class="btn-launch btn-warn">Accès direct ↗</a>
-    </div>
-  }
-
+  <!-- ── 1. Sélecteur d'application ──────────────────────────────────────── -->
   <section class="section">
-    <h2>Générer les prompts pour une app</h2>
-
-    <!-- Sélection du spec -->
+    <h2>Choisir une application</h2>
     <div class="spec-selector">
       @if (specsLoading()) {
         <p class="muted">Chargement des specs depuis App Builder…</p>
       } @else if (specsError()) {
         <p class="error-text">{{ specsError() }}</p>
-      } @else if (specs().length === 0) {
-        <p class="muted">Aucun spec dans App Builder — créez-en un d'abord.</p>
       } @else {
-        <label class="select-label">Choisir un spec App Builder</label>
+        <label class="select-label">Application</label>
         <select (change)="onSelect($event)" class="spec-select">
           <option value="">— sélectionner —</option>
           @for (s of specs(); track s.id) {
             <option [value]="s.id">{{ s.name }}</option>
           }
+          <option value="custom">✦ Application personnalisée (hors App Builder)</option>
         </select>
       }
     </div>
+  </section>
 
-    @if (selectedSpec()) {
+  <!-- ── 2. Étapes de création ────────────────────────────────────────────── -->
+  @if (selectedSpec(); as spec) {
+    <section class="section">
+      <h2>Créer « {{ spec.name }} »</h2>
+
       <!-- Étape 1 : new-app.sh -->
       <div class="prompt-block">
         <div class="prompt-header">
@@ -81,6 +66,33 @@
         </div>
         <pre class="prompt-code">{{ deployPrompt() }}</pre>
         <p class="prompt-hint">Claude lance <code>setup2.sh</code>, vérifie les containers, les migrations et l'auth Keycloak — et documente chaque bug corrigé dans <code>~/dev/.debug/</code>.</p>
+      </div>
+    </section>
+  } @else if (isCustom()) {
+    <section class="section">
+      <h2>Créer une application personnalisée</h2>
+      <app-new-app-guide></app-new-app-guide>
+    </section>
+  }
+
+  <!-- ── 3. Éditeur de code ──────────────────────────────────────────────── -->
+  <section class="section">
+    <h2>Éditeur de code</h2>
+    @if (available()) {
+      <div class="launch-card">
+        <div class="launch-icon">&#128736;</div>
+        <h3>code-server</h3>
+        <p>Votre environnement de développement complet, accessible depuis n'importe où.</p>
+        <a [href]="codeServerUrl" target="_blank" class="btn-launch">Ouvrir l'éditeur ↗</a>
+        <p class="launch-hint">S'ouvre dans un nouvel onglet — authentifié via Keycloak</p>
+      </div>
+    } @else {
+      <div class="unavailable-card">
+        <div class="unavail-icon">&#9888;</div>
+        <h3>Éditeur non disponible</h3>
+        <p>L'accès à code-server requiert HTTPS (cookies sécurisés pour oauth2-proxy).<br>
+           Utilisez l'URL publique <strong>https://sacha37420.hopto.org/code</strong> plutôt qu'une IP directe.</p>
+        <a href="https://sacha37420.hopto.org/code" target="_blank" class="btn-launch btn-warn">Accès direct ↗</a>
       </div>
     }
   </section>

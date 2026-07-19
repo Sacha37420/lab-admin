@@ -118,7 +118,7 @@ code, pre, .mono { font-family: var(--font-mono); }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
 /* ─── Chrome de page partagé ────────────────────────────────────────────
-   Utilisé par les pages sans styleUrl propre : forbidden, create-project,
+   Utilisé par les pages sans styleUrl propre : forbidden,
    et les nouvelles pages outils/apps-hebergees/nouvel-utilisateur. ────── */
 .page {
   max-width: 900px;
@@ -135,7 +135,7 @@ code, pre, .mono { font-family: var(--font-mono); }
   p { color: var(--text-mute); font-size: var(--text-base); }
 }
 
-/* ─── Steps (create-project) ─────────────────────────────────────────── */
+/* ─── Steps (shared new-app-guide) ──────────────────────────────────────── */
 .steps { display: flex; flex-direction: column; gap: var(--space-5); }
 
 .step {

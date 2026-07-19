@@ -33,10 +33,7 @@ export class AppComponent {
 
   readonly navItems: NavItem[] = [
     { path: '/',                   label: 'Accueil',           abbr: 'Ac', exact: true },
-    { path: '/apps',                label: 'Applications',      abbr: 'Ap' },
     { path: '/code',                label: 'Code',               abbr: 'Co' },
-    { path: '/deploy-prompts',      label: 'Déployer',           abbr: 'Dé' },
-    { path: '/create-project',      label: 'Créer un projet',    abbr: 'Cr' },
     { path: '/apps-hebergees',      label: 'Apps du lab',        abbr: 'La' },
     { path: '/outils',              label: 'Outils',             abbr: 'Ou' },
     { path: '/nouvel-utilisateur',  label: 'Nouvel utilisateur', abbr: 'Nu' },
