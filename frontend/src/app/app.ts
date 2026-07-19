@@ -40,7 +40,6 @@ export class AppComponent {
     { path: '/apps-hebergees',      label: 'Apps du lab',        abbr: 'La' },
     { path: '/outils',              label: 'Outils',             abbr: 'Ou' },
     { path: '/nouvel-utilisateur',  label: 'Nouvel utilisateur', abbr: 'Nu' },
-    { path: '/profile',             label: 'Profil',             abbr: 'Pr' },
   ];
 
   @ViewChild('closeBtn') private closeBtnRef?: ElementRef<HTMLButtonElement>;

@@ -51,12 +51,6 @@ export const routes: Routes = [
     canActivate: [adminGuard],
   },
   {
-    path: 'profile',
-    loadComponent: () =>
-      import('./pages/profile/profile.component').then(m => m.ProfileComponent),
-    canActivate: [adminGuard],
-  },
-  {
     path: 'forbidden',
     loadComponent: () =>
       import('./pages/forbidden/forbidden.component').then(m => m.ForbiddenComponent),
