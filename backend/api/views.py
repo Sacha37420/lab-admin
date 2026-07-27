@@ -4,15 +4,18 @@ import string
 from django.conf import settings
 from django.core.mail import send_mail
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import generics, status
 from rest_framework.response import Response
-from .models import Department, UserRecord
-from .serializers import DepartmentSerializer, UserRecordSerializer
+from .models import DebugRunJob, DebugTest, Department, UserRecord
+from .serializers import (
+    DebugRunJobSerializer, DebugTestSerializer, DepartmentSerializer, UserRecordSerializer,
+)
 from . import keycloak_admin, lab_groups, infra_info
 from .keycloak_admin import KeycloakAdminError
 from .models_appbuilder import AppSpec as RemoteAppSpec
 from .serializers_appbuilder import serialize_appspec
+from .tasks import run_debug_tests
 
 
 class MeView(APIView):
@@ -222,3 +225,78 @@ class LabUserCreateView(APIView):
             'email_sent': email_sent,
             'email_error': email_error,
         }, status=status.HTTP_201_CREATED)
+
+
+class CatalogSyncView(APIView):
+    """
+    POST /api/debug/catalog-sync/ — appelé par scripts/setup_unit.sh à chaque
+    déploiement d'une app, jamais par un navigateur : authentifié par secret
+    partagé (header X-Setup-Key), pas par JWT Keycloak — même famille de
+    pattern que X-Meteo-Key de carto-lab. Seul endpoint de lab-admin en dehors
+    de l'auth Keycloak par défaut (voir CLAUDE.md, section sécurité).
+
+    Body : {app: str, tests: [{file, title}, ...]}
+    Upsert les DebugTest de cette app, et purge ceux qui n'apparaissent plus
+    dans le payload (source de vérité = dernier catalogue renvoyé par le runner).
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        key = request.headers.get('X-Setup-Key', '')
+        if not settings.SETUP_CATALOG_KEY or key != settings.SETUP_CATALOG_KEY:
+            return Response({'detail': 'Clé invalide.'}, status=status.HTTP_403_FORBIDDEN)
+
+        app = (request.data.get('app') or '').strip()
+        tests = request.data.get('tests') or []
+        if not app:
+            return Response({'detail': '"app" manquant.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        seen_titles = set()
+        for t in tests:
+            file, title = t.get('file', ''), t.get('title', '')
+            if not file or not title:
+                continue
+            DebugTest.objects.update_or_create(app=app, file=file, title=title)
+            seen_titles.add((file, title))
+
+        # Filtrage précis en Python plutôt qu'une requête (file, title) IN (...) :
+        # le catalogue d'une app reste de taille modeste (quelques tests).
+        stale_ids = [
+            row.id for row in DebugTest.objects.filter(app=app)
+            if (row.file, row.title) not in seen_titles
+        ]
+        DebugTest.objects.filter(id__in=stale_ids).delete()
+
+        return Response({'app': app, 'count': len(seen_titles)})
+
+
+class DebugTestListView(generics.ListAPIView):
+    """GET /api/debug/tests/ — catalogue complet, avec le dernier résultat."""
+
+    queryset = DebugTest.objects.all()
+    serializer_class = DebugTestSerializer
+
+
+class DebugRunView(APIView):
+    """
+    POST /api/debug/run/ — {app: "<app>"} ou {} (toutes les apps du lab).
+    Crée un DebugRunJob, déclenche la tâche Celery, 202.
+    """
+
+    def post(self, request):
+        scope_app = (request.data.get('app') or '').strip()
+        job = DebugRunJob.objects.create(
+            scope_app=scope_app,
+            owner_email=getattr(request.user, 'email', ''),
+        )
+        run_debug_tests.delay(job.id, scope_app)
+        return Response(DebugRunJobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
+
+
+class DebugJobStatusView(generics.RetrieveAPIView):
+    """GET /api/debug/jobs/<id>/ — poll de la progression d'un lancement."""
+
+    queryset = DebugRunJob.objects.all()
+    serializer_class = DebugRunJobSerializer

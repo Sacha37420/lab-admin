@@ -5,3 +5,7 @@ PyJWT>=2.8
 cryptography>=40.0
 django-cors-headers>=3.14.0
 requests>=2.31
+
+# ── File de tâches asynchrones (lancement des tests E2E) ───────────────────────
+celery>=5.3
+redis>=5.0

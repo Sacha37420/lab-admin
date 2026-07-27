@@ -33,6 +33,12 @@ export const routes: Routes = [
     canActivate: [adminGuard],
   },
   {
+    path: 'debug',
+    loadComponent: () =>
+      import('./pages/debug/debug.component').then(m => m.DebugComponent),
+    canActivate: [adminGuard],
+  },
+  {
     path: 'forbidden',
     loadComponent: () =>
       import('./pages/forbidden/forbidden.component').then(m => m.ForbiddenComponent),

@@ -74,6 +74,31 @@ DB_SCHEMA = _DB_SCHEMA
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 USE_TZ = True
 
+# ── Celery / Redis (lancement des tests E2E — voir api/tasks.py) ───────────────
+# Un seul run à la fois : cohérent avec le mutex du runner (runner/server.js)
+# et la contrainte 2 vCPU/16 Go du serveur (cf. CLAUDE.md, section atelier-3d).
+# Appliqué via la commande du service worker (docker-compose.yml
+# --concurrency=1), pas ici — CELERY_WORKER_CONCURRENCY n'a pas d'effet une
+# fois le worker démarré avec -c/--concurrency explicite.
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://redis:6379/0')
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://redis:6379/1')
+CELERY_TASK_TRACK_STARTED = True
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+
+# ── Catalogue des tests E2E (setup_unit.sh → CatalogSyncView) ──────────────────
+# Secret partagé, PAS un token Keycloak : setup_unit.sh est un script, pas une
+# session navigateur. Même famille de pattern que X-Meteo-Key de carto-lab
+# (carto-lab/backend/api/views.py, MeteoJobLaunchView). Auto-généré par
+# setup_unit.sh dans lab-admin/.env s'il est absent — voir scripts/setup_unit.sh.
+SETUP_CATALOG_KEY = config('SETUP_CATALOG_KEY', default='')
+
+# URL interne du runner E2E partagé (réseau sso-net, jamais exposé — voir
+# runner/docker-compose.yml). Pas de variante WAN/LAN : lab-admin et le runner
+# sont toujours sur le même réseau Docker.
+E2E_RUNNER_URL = config('E2E_RUNNER_URL', default='http://lab-runner:4300')
+
 # ── Django REST Framework ──────────────────────────────────────────────────────
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',

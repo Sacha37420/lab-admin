@@ -1,0 +1,100 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Debug — Tests end-to-end</h1>
+    <p>
+      Catalogue rempli automatiquement à chaque déploiement (<code>setup_unit.sh</code>).
+      Lancer un test exécute réellement le navigateur sur le runner partagé —
+      voir CLAUDE.md, section « Tests end-to-end ».
+    </p>
+  </div>
+
+  @if (loading()) {
+    <div class="loading-state">
+      <span class="icon">⏳</span>
+      <span>Chargement…</span>
+    </div>
+  } @else if (error() && !tests().length) {
+    <div class="error-state">
+      <span class="icon">⚠️</span>
+      <span>{{ error() }}</span>
+    </div>
+  } @else {
+    <div class="env-card">
+      <div class="env-card-header">
+        <h2>Tests catalogués ({{ tests().length }})</h2>
+        <button
+          class="btn-primary"
+          type="button"
+          (click)="runAll()"
+          [disabled]="isBusy()"
+        >
+          @if (isBusy() && runningScope() === '') {
+            Lancement… {{ job()?.progress ?? 0 }}%
+          } @else {
+            Lancer tout
+          }
+        </button>
+      </div>
+
+      @if (error()) {
+        <p class="err">{{ error() }}</p>
+      }
+
+      @if (job(); as j) {
+        <p class="job-status" [class]="j.status.toLowerCase()">
+          {{ j.message || j.status }}
+        </p>
+      }
+
+      @if (!tests().length) {
+        <p class="hint">
+          Aucun test catalogué pour l'instant. Déployez une app avec un fichier
+          <code>frontend/e2e/cloisonnement.spec.ts</code> (voir CLAUDE.md) pour
+          qu'elle apparaisse ici.
+        </p>
+      } @else {
+        @for (g of groups; track g.app) {
+          <table class="debug-table">
+            <thead>
+              <tr>
+                <th class="app-col">
+                  {{ g.app }}
+                  <button
+                    class="btn-secondary run-app-btn"
+                    type="button"
+                    (click)="runApp(g.app)"
+                    [disabled]="isBusy()"
+                  >
+                    @if (isBusy() && runningScope() === g.app) {
+                      Lancement…
+                    } @else {
+                      Lancer
+                    }
+                  </button>
+                </th>
+                <th>Statut</th>
+                <th>Dernière exécution</th>
+                <th>Durée</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (t of g.tests; track t.id) {
+                <tr>
+                  <td class="test-title">{{ t.title }}</td>
+                  <td><span class="badge" [class]="t.last_status.toLowerCase()">{{ statusLabel(t.last_status) }}</span></td>
+                  <td>{{ t.last_run_at ? (t.last_run_at | date:'short') : '—' }}</td>
+                  <td>{{ t.last_duration_ms ? (t.last_duration_ms / 1000 | number:'1.1-1') + ' s' : '—' }}</td>
+                </tr>
+                @if (t.last_message && (t.last_status === 'FAILED' || t.last_status === 'ERROR')) {
+                  <tr class="msg-row">
+                    <td colspan="4">{{ t.last_message }}</td>
+                  </tr>
+                }
+              }
+            </tbody>
+          </table>
+        }
+      }
+    </div>
+  }
+</div>

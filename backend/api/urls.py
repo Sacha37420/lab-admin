@@ -3,6 +3,7 @@ from .views import (
     MeView, DepartmentListView, UserListView,
     AppSpecPublicView, InfrastructureView, AdminToolsView,
     LabUserGroupsView, LabUserCreateView,
+    CatalogSyncView, DebugTestListView, DebugRunView, DebugJobStatusView,
 )
 
 urlpatterns = [
@@ -14,4 +15,8 @@ urlpatterns = [
     path('tools/',            AdminToolsView.as_view()),
     path('lab-users/groups/', LabUserGroupsView.as_view()),
     path('lab-users/',        LabUserCreateView.as_view()),
+    path('debug/catalog-sync/', CatalogSyncView.as_view()),
+    path('debug/tests/',        DebugTestListView.as_view()),
+    path('debug/run/',          DebugRunView.as_view()),
+    path('debug/jobs/<int:pk>/', DebugJobStatusView.as_view()),
 ]
