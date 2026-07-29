@@ -9,6 +9,7 @@ jamais de dump brut d'un fichier ``.env``).
 """
 from __future__ import annotations
 
+import os
 import re
 
 from django.conf import settings
@@ -18,6 +19,11 @@ from . import lab_groups
 _PORTS_FILE = '/mnt/ports'
 _DEV_ROOT = '/mnt/dev'
 _HANDLE_PATH_RE = re.compile(r'caddy\.handle_path:\s*"(/[^"]*)/\*"')
+
+
+def _is_real_app(name: str) -> bool:
+    """Une app existe si son dossier porte un docker-compose.yml."""
+    return os.path.isfile(f'{_DEV_ROOT}/{name}/docker-compose.yml')
 
 
 def _caddy_paths(app: str) -> tuple[str | None, str | None]:
@@ -38,11 +44,21 @@ def _caddy_paths(app: str) -> tuple[str | None, str | None]:
 
 
 def hosted_apps() -> list[dict]:
-    """Apps affichées : limitées à .app-descriptions (mêmes apps que la page
-    404 — google-agenda et toute app volontairement tenue hors vitrine
-    n'apparaissent pas ici non plus)."""
+    """Toutes les apps réellement déployées, avec leur description si connue.
+
+    Volontairement **découplé de .app-descriptions** depuis le 2026-07-30 : ce
+    fichier ne sert plus qu'à la vitrine publique de la page 404. lab-admin est
+    un outil d'administration réservé aux admins, il doit montrer l'état réel du
+    lab — une app hors vitrine (ou simplement oubliée dans ce fichier) y était
+    invisible en silence, ce qui est le contraire de l'usage attendu.
+
+    Filtre appliqué : une entrée de ``.ports`` n'est retenue que si le dossier
+    correspondant existe avec un ``docker-compose.yml``. Ça écarte les entrées
+    orphelines (app supprimée dont la ligne subsiste) et les services internes
+    qui réservent un port sans être une app (ex. ``robot-lab-engine``).
+    """
     domain = getattr(settings, 'DOMAIN', '') or ''
-    listed = lab_groups.listed_apps()
+    descriptions = lab_groups.app_descriptions()
     try:
         with open(_PORTS_FILE, encoding='utf-8') as f:
             content = f.read()
@@ -50,14 +66,17 @@ def hosted_apps() -> list[dict]:
         return []
 
     apps = []
+    seen: set[str] = set()
     for line in content.strip().splitlines():
         line = line.strip()
         if not line or line.startswith('#') or line.startswith('__'):
             continue
         parts = line.split(':')
         name = parts[0]
-        if name not in listed:
+        # .ports peut contenir des doublons (ajout rejoué) — une seule carte.
+        if name in seen or not _is_real_app(name):
             continue
+        seen.add(name)
         backend_port = int(parts[1]) if len(parts) > 1 and parts[1] else None
         frontend_port = int(parts[2]) if len(parts) > 2 and parts[2] else None
 
@@ -71,8 +90,11 @@ def hosted_apps() -> list[dict]:
             frontend_url = f'{base}:{frontend_port}/' if frontend_port else None
             backend_url = f'{base}:{backend_port}/' if backend_port else None
 
+        label, description = descriptions.get(name, (name, ''))
         apps.append({
             'name': name,
+            'label': label,
+            'description': description,
             'backend_port': backend_port,
             'frontend_port': frontend_port,
             'frontend_url': frontend_url,

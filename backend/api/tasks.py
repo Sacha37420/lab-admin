@@ -14,11 +14,16 @@ from .models import DebugRunJob, DebugTest
 
 
 def _target_apps(scope_app: str) -> list[str]:
-    """Une app précise, ou toutes les apps listées du lab (même source que
-    LabUserGroupsView : .app-descriptions via lab_groups.listed_apps())."""
+    """Une app précise, ou toutes les apps réellement déployées.
+
+    S'appuyait auparavant sur .app-descriptions (la vitrine publique) : une app
+    absente de ce fichier n'était jamais testée, en silence — l'angle mort le
+    plus gênant possible pour un outil de test. Même source que
+    LabUserGroupsView : les apps qui ont un docker-compose.yml.
+    """
     if scope_app:
         return [scope_app]
-    return sorted(lab_groups.listed_apps())
+    return sorted(lab_groups.app_required_groups())
 
 
 @shared_task(bind=True)

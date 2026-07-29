@@ -17,54 +17,52 @@ import re
 
 _DEV_ROOT = '/mnt/dev'
 _APP_DESCRIPTIONS = os.path.join(_DEV_ROOT, '.app-descriptions')
-_HIDDEN_GROUPS_FILE = os.path.join(_DEV_ROOT, '.hidden-groups')
 _REQUIRE_GROUP_RE = re.compile(r'--require-group\s+(\S+)')
 
 
-def listed_apps() -> set[str]:
-    """Apps listées dans .app-descriptions — même fichier de curation que la
-    page 404 (scripts/complete_404.sh) : seules ces apps sont éligibles à
-    apparaître dans les outils d'admin du lab (lab-admin, add-user.sh)."""
-    apps: set[str] = set()
+def app_descriptions() -> dict[str, tuple[str, str]]:
+    """{nom_app: (nom_affiché, description)} depuis .app-descriptions.
+
+    Ce fichier pilote la **vitrine publique** de la page 404
+    (scripts/complete_404.sh). Il n'est plus utilisé ici pour filtrer ce que
+    lab-admin affiche (cf. infra_info.hosted_apps) — seulement pour habiller
+    une app d'un nom lisible et d'une description quand elle y figure.
+    """
+    result: dict[str, tuple[str, str]] = {}
     try:
         with open(_APP_DESCRIPTIONS, encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith('#'):
                     continue
-                apps.add(line.split('|', 1)[0].strip())
+                parts = [p.strip() for p in line.split('|')]
+                name = parts[0]
+                if not name:
+                    continue
+                label = parts[1] if len(parts) > 1 and parts[1] else name
+                description = parts[2] if len(parts) > 2 else ''
+                # Une app peut avoir plusieurs lignes (routes multiples, ex.
+                # sso-lab) : la première fait foi pour l'habillage.
+                result.setdefault(name, (label, description))
     except OSError:
         pass
-    return apps
-
-
-def hidden_groups() -> set[str]:
-    """Groupes listés dans .hidden-groups — jamais affichés, même s'ils
-    existent réellement dans l'annuaire LDAP et sont requis par une app."""
-    hidden: set[str] = set()
-    try:
-        with open(_HIDDEN_GROUPS_FILE, encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#'):
-                    hidden.add(line)
-    except OSError:
-        pass
-    return hidden
+    return result
 
 
 def app_required_groups() -> dict[str, list[str]]:
-    """{nom_app: [groupe, ...]} — limité aux apps de .app-descriptions, et
-    aux groupes qui ne sont pas dans .hidden-groups."""
+    """{nom_app: [groupe, ...]} — toutes les apps réellement déployées.
+
+    Plus aucun filtre de groupe : le fichier ``.hidden-groups`` a été retiré le
+    2026-07-30. Il n'existait que pour cacher ``dom``/``harem`` du temps où ils
+    ne servaient qu'à ``google-agenda`` (app déplacée vers ``dev2/``) ; ces deux
+    groupes sont désormais requis par ``app-builder`` et ``storage``, donc les
+    masquer donnait une vue fausse des droits réellement nécessaires.
+    """
     result: dict[str, list[str]] = {}
     if not os.path.isdir(_DEV_ROOT):
         return result
 
-    listed = listed_apps()
-    hidden = hidden_groups()
     for name in sorted(os.listdir(_DEV_ROOT)):
-        if name not in listed:
-            continue
         opts_path = os.path.join(_DEV_ROOT, name, '.keycloak-client-opts')
         compose_path = os.path.join(_DEV_ROOT, name, 'docker-compose.yml')
         if not os.path.isfile(compose_path) or not os.path.isfile(opts_path):
@@ -75,8 +73,9 @@ def app_required_groups() -> dict[str, list[str]]:
         except OSError:
             continue
         m = _REQUIRE_GROUP_RE.search(content)
-        groups = [g.strip() for g in m.group(1).split(',') if g.strip()] if m else []
-        result[name] = [g for g in groups if g not in hidden]
+        result[name] = (
+            [g.strip() for g in m.group(1).split(',') if g.strip()] if m else []
+        )
     return result
 
 
