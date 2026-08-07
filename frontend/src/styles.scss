@@ -126,6 +126,12 @@ code, pre, .mono { font-family: var(--font-mono); }
   padding: var(--space-6) var(--space-5) var(--space-8);
 }
 
+@media (max-width: 899px) {
+  /* Ne réduit que la marge horizontale — le rythme vertical (space-6/space-8)
+     n'est pas en cause sur mobile, seule la largeur disponible l'est. */
+  .page { padding: var(--space-6) var(--space-4) var(--space-8); }
+}
+
 .page-header {
   margin-bottom: var(--space-6);
   padding-bottom: var(--space-4);
