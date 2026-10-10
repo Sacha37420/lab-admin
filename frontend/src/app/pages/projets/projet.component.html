@@ -222,6 +222,10 @@
         @if (envError()) { <p class="pj-error" role="alert">{{ envError() }}</p> }
       </div>
 
+      <!-- ── Ma base (I9) : actions seulement si ce projet est le mien ──────── -->
+      <app-ma-base [database]="p.database" [actions]="!!me()?.uid && me()?.uid === p.owner"
+                   [pgadminOpen]="me()?.pgadmin?.open" />
+
       <!-- ── Accès ────────────────────────────────────────────────────────── -->
       <div class="pj-card">
         <h2>Accès</h2>
@@ -231,15 +235,9 @@
           @if (p.urls.api; as u) { <dt>API</dt><dd><a [href]="u" target="_blank" rel="noopener">{{ u }}</a></dd> }
           <dt>Dépôt GitHub</dt>
           <dd>@if (repoPage(p.repo_url); as u) { <a [href]="u" target="_blank" rel="noopener">{{ u }}</a> } @else { — }</dd>
-          <dt>Base — hôte</dt><dd><code>{{ p.database.host }}</code></dd>
-          <dt>Base — nom</dt><dd><code>{{ p.database.name }}</code></dd>
-          <dt>Base — rôle</dt><dd><code>{{ p.database.user }}</code></dd>
-          @if (p.database.schema) { <dt>Schéma</dt><dd><code>{{ p.database.schema }}</code></dd> }
           <dt>Fichiers</dt><dd><a [href]="engine.storageUrl" target="_blank" rel="noopener">Mes fichiers dans storage ↗</a></dd>
           <dt>MCP</dt><dd><code>{{ p.mcp_url }}</code></dd>
         </dl>
-        <p class="pj-hint">Le mot de passe de la base n'est affiché nulle part : il est injecté dans l'app au déploiement.</p>
-
         <h3>Console SQL</h3>
         <p class="pj-hint">Exécutée avec votre rôle, dans votre base, sur le schéma de ce projet. 500 lignes et 10 secondes au plus.</p>
         <form class="pj-form" (ngSubmit)="runSql()">

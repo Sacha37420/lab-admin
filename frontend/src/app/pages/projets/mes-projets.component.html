@@ -213,6 +213,10 @@
           }
         </ul>
       }
+
+      <!-- ── Ma base (I9) : mot de passe et pgAdmin pour soi-même seulement ── -->
+      <app-ma-base [database]="shown()?.database ?? null" [actions]="!viewingOther()"
+                   [pgadminOpen]="self()?.pgadmin?.open" />
     }
   </section>
 }

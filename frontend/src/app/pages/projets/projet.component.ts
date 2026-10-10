@@ -5,10 +5,12 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { EngineService } from '../../core/engine.service';
 import {
-  Commits, ENV_KEY_RE, EngineError, EnvVar, Job, Logs, ProjectDetail, SqlCell, SqlResult,
+  Commits, ENV_KEY_RE, EngineError, EnvVar, Job, Logs, Me, ProjectDetail, SqlCell, SqlResult,
   Ticket, WorkspaceOpened, isWorkspaceUrl, repoPage, stateLabel, toEngineError, verdictLabel,
 } from '../../core/engine.client';
+import { preopenTab, sendTab } from '../../core/tool-tab';
 import { JobSuiviComponent } from '../../shared/job-suivi/job-suivi.component';
+import { MaBaseComponent } from '../../shared/ma-base/ma-base.component';
 
 /**
  * Page d'un projet (`/projets/<app>`, contrat multi-dev I6 v6) : tout ce qu'un
@@ -20,7 +22,7 @@ import { JobSuiviComponent } from '../../shared/job-suivi/job-suivi.component';
 @Component({
   selector: 'app-projet',
   standalone: true,
-  imports: [FormsModule, RouterLink, DatePipe, JobSuiviComponent],
+  imports: [FormsModule, RouterLink, DatePipe, JobSuiviComponent, MaBaseComponent],
   templateUrl: './projet.component.html',
 })
 export class ProjetComponent implements OnInit {
@@ -36,6 +38,8 @@ export class ProjetComponent implements OnInit {
   project = signal<ProjectDetail | null>(null);
   loading = signal(true);
   fatal = signal<EngineError | null>(null);
+  /** Le compte connecté : « Ma base » n'agit que si le projet est le sien. */
+  me = signal<Me | null>(null);
 
   // Déploiement
   commits = signal<Commits | null>(null);
@@ -91,6 +95,7 @@ export class ProjetComponent implements OnInit {
   wsNotice = signal('');
 
   ngOnInit(): void {
+    this.engine.me().subscribe({ next: me => this.me.set(me), error: () => this.me.set(null) });
     this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(params => {
       this.app = params.get('app') ?? '';
       this.reset();
@@ -291,10 +296,7 @@ export class ProjetComponent implements OnInit {
     this.wsBusy.set(true);
     this.wsError.set(null);
     this.wsNotice.set('');
-    const tab = window.open('', '_blank');
-    if (tab) {
-      try { tab.document.title = 'Ouverture de l\'éditeur…'; tab.document.body.textContent = 'Ouverture de l\'éditeur…'; } catch { /* onglet déjà navigué */ }
-    }
+    const tab = preopenTab('Ouverture de l\'éditeur…');
     this.engine.workspaceOpen(this.app).subscribe({
       next: opened => {
         this.wsBusy.set(false);
@@ -305,10 +307,7 @@ export class ProjetComponent implements OnInit {
         }
         this.wsOpened.set(opened);
         this.project.update(p => p ? { ...p, workspace: { open: true } } : p);
-        if (tab && !tab.closed) {
-          tab.opener = null;
-          tab.location.replace(opened.url);
-        } else {
+        if (!sendTab(tab, opened.url)) {
           this.wsNotice.set('Le navigateur a bloqué le nouvel onglet : autorisez les fenêtres surgissantes pour ce site, puis cliquez de nouveau.');
         }
       },

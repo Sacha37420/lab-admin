@@ -10,6 +10,7 @@ import {
   profileOf, stateLabel, toEngineError, verdictLabel,
 } from '../../core/engine.client';
 import { JobSuiviComponent } from '../../shared/job-suivi/job-suivi.component';
+import { MaBaseComponent } from '../../shared/ma-base/ma-base.component';
 
 /**
  * Accueil des développeurs : « Mes projets » (contrat multi-dev I6 v6).
@@ -24,7 +25,7 @@ import { JobSuiviComponent } from '../../shared/job-suivi/job-suivi.component';
 @Component({
   selector: 'app-mes-projets',
   standalone: true,
-  imports: [FormsModule, RouterLink, JobSuiviComponent],
+  imports: [FormsModule, RouterLink, JobSuiviComponent, MaBaseComponent],
   templateUrl: './mes-projets.component.html',
 })
 export class MesProjetsComponent implements OnInit {

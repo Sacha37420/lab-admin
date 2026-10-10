@@ -20,7 +20,9 @@ export type EngineErrorCode =
   | 'unauthorized' | 'forbidden' | 'not_initialized' | 'not_found' | 'invalid'
   | 'name_refused' | 'github_not_linked' | 'github_scope' | 'busy' | 'job_exists'
   | 'queue_full' | 'workspace_limit' | 'sql_error' | 'sql_timeout' | 'upstream'
-  | 'unavailable' | 'failed';
+  | 'unavailable' | 'failed'
+  // I9 (contrat v7)
+  | 'pg_trust_enabled' | 'pgadmin_limit';
 
 /**
  * Erreur normalisée. `code` vaut un `EngineErrorCode`, ou l'un des deux codes
@@ -130,6 +132,8 @@ export interface Me {
   mcp_url: string;
   oauth_hub_url: string;
   workspace: WorkspaceInfo | null;
+  /** I9 (v7). Absent tant que le moteur en service ne le rend pas. */
+  pgadmin?: { open: boolean } | null;
   scope_app: string | null;
   viewed_as: string | null;
   remaining: RemainingStep[];
@@ -227,6 +231,23 @@ export interface WorkspaceOpened {
   ticket_expires_in: number;
   workspace: WorkspaceInfo;
 }
+
+// ── I9 (contrat v7) : mot de passe de la base, pgAdmin par dev ───────────────
+
+/**
+ * `GET /me/database-password`. SECRET : ne vit que dans la mémoire du composant
+ * qui l'affiche, le temps de l'affichage — jamais dans le stockage du
+ * navigateur, une URL, un journal ou un état partagé.
+ */
+export interface DatabasePassword {
+  database: { host: string; name: string; user: string };
+  gis: { host: string; name: string; user: string } | null;
+  password: string;
+  gis_password: string | null;
+}
+
+export interface PgadminServer { name: string; host: string; database: string; user: string; }
+export interface PgadminOpened { url: string; servers: PgadminServer[]; }
 
 // ── §4 Jobs ───────────────────────────────────────────────────────────────────
 
@@ -369,6 +390,11 @@ export class EngineClient {
     return this.call('DELETE', `/projects/${seg(app)}/workspace`);
   }
 
+  // I9 — soi-même uniquement : ces trois routes n'ont pas de `?as=`.
+  databasePassword(): Observable<DatabasePassword> { return this.call('GET', '/me/database-password'); }
+  pgadminOpen(): Observable<PgadminOpened> { return this.call('POST', '/me/pgadmin'); }
+  pgadminClose(): Observable<{ closed: boolean }> { return this.call('DELETE', '/me/pgadmin'); }
+
   // §4
   job(id: string, tail = 200): Observable<Job> {
     return this.call('GET', `/jobs/${seg(id)}`, undefined, { tail: String(tail) });
@@ -420,18 +446,28 @@ export function repoPage(repoUrl: string | null): string | null {
 }
 
 /**
- * L'URL d'un espace de travail rendue par le moteur est suivie par
+ * Une URL d'outil rendue par le moteur (éditeur, pgAdmin) est suivie par
  * `location.replace`, hors de l'assainissement d'Angular : on n'y va que si
- * elle est bien sur l'origine du lab, sous `/ws/` (I3).
+ * elle est sur l'origine du lab, en https, sous le préfixe attendu.
  */
-export function isWorkspaceUrl(url: unknown, origin: string): url is string {
+function isLabToolUrl(url: unknown, origin: string, prefix: string): url is string {
   if (typeof url !== 'string') return false;
   try {
     const u = new URL(url);
-    return u.origin === origin && u.protocol === 'https:' && u.pathname.startsWith('/ws/');
+    return u.origin === origin && u.protocol === 'https:' && u.pathname.startsWith(prefix);
   } catch {
     return false;
   }
+}
+
+/** Espace de travail : `/ws/` (I3). */
+export function isWorkspaceUrl(url: unknown, origin: string): url is string {
+  return isLabToolUrl(url, origin, '/ws/');
+}
+
+/** pgAdmin d'un dev : `/pg/` (I9). */
+export function isPgadminUrl(url: unknown, origin: string): url is string {
+  return isLabToolUrl(url, origin, '/pg/');
 }
 
 /** Règle du moteur pour une clé de variable (API.md §3.4). */

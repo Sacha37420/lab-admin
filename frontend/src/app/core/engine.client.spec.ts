@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { Observable, firstValueFrom, lastValueFrom, of, throwError, toArray } from 'rxjs';
 import {
   EngineClient, EngineRequest, Job, Me, deployVerdicts, profileOf, repoPage, testCases,
-  toEngineError, ENV_KEY_RE, APP_NAME_RE, isWorkspaceUrl, stateLabel, verdictLabel,
+  toEngineError, ENV_KEY_RE, APP_NAME_RE, isPgadminUrl, isWorkspaceUrl, stateLabel, verdictLabel,
 } from './engine.client';
 
 function recorder(reply: (req: EngineRequest) => Observable<unknown> = () => of({})) {
@@ -78,7 +78,36 @@ test('chaque route : méthode, chemin, corps, paramètres', async () => {
   assert.deepEqual(await run(client.workspaceClose('mon-app')), { method: 'DELETE', path: '/projects/mon-app/workspace' });
   assert.deepEqual(await run(client.job('d359abbb4186de01')),
     { method: 'GET', path: '/jobs/d359abbb4186de01', params: { tail: '200' } });
+  // I9 (contrat v7) — soi-même uniquement : aucun paramètre, aucun corps.
+  assert.deepEqual(await run(client.databasePassword()), { method: 'GET', path: '/me/database-password' });
+  assert.deepEqual(await run(client.pgadminOpen()), { method: 'POST', path: '/me/pgadmin' });
+  assert.deepEqual(await run(client.pgadminClose()), { method: 'DELETE', path: '/me/pgadmin' });
   assert.equal(calls.length, 0);
+});
+
+test('I9 : formes exactes, erreurs nommées, adresse de pgAdmin', async () => {
+  const reply = { database: { host: 'postgres', name: 'dev_hassan', user: 'dev_hassan' }, gis: null,
+                  password: 'S3cret', gis_password: null };
+  const { client } = recorder(() => of(reply));
+  const got = await firstValueFrom(client.databasePassword());
+  assert.equal(got.password, 'S3cret');
+  assert.equal(got.gis, null);
+
+  const trust = toEngineError({ status: 409, error: { error: 'pg_trust_enabled', detail: 'Base non verrouillée.' } });
+  assert.equal(trust.code, 'pg_trust_enabled');
+  assert.equal(toEngineError({ status: 429, error: { error: 'pgadmin_limit', detail: 'Plafond atteint.' } }).code, 'pgadmin_limit');
+  // I9 dit 403 pour not_initialized, API.md 409 : c'est le CODE qui compte, pas le statut.
+  assert.equal(toEngineError({ status: 403, error: { error: 'not_initialized', detail: '…' } }).code, 'not_initialized');
+  assert.equal(toEngineError({ status: 409, error: { error: 'not_initialized', detail: '…' } }).code, 'not_initialized');
+
+  const origin = 'https://lab.example.org';
+  assert.ok(isPgadminUrl('https://lab.example.org/pg/hassan/?ticket=abc', origin));
+  for (const bad of ['https://lab.example.org/ws/hassan/?ticket=abc', 'https://evil.example/pg/hassan/',
+                     'http://lab.example.org/pg/hassan/', 'https://lab.example.org/pgadmin', 'javascript:alert(1)',
+                     'https://lab.example.org@evil.example/pg/x/', '//evil.example/pg/x/', null]) {
+    assert.equal(isPgadminUrl(bad, origin), false, String(bad));
+  }
+  assert.equal(isWorkspaceUrl('https://lab.example.org/pg/hassan/', origin), false);
 });
 
 test('un nom ou une clé piégés ne changent pas de route', async () => {
