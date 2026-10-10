@@ -1,0 +1,440 @@
+/**
+ * Client de l'API web du moteur du lab (`/mcp/api`, contrat multi-dev I5 v6).
+ *
+ * SEUL endroit de lab-admin qui connaît les routes et les formes du moteur.
+ * Description faisant foi : `lab-mcp/API.md` — chaque type ci-dessous en est la
+ * transcription, section par section. Une forme qui bouge côté moteur se
+ * corrige ici et nulle part ailleurs.
+ *
+ * Fichier SANS dépendance à Angular (rxjs seulement) : `EngineClient` reçoit
+ * son transport HTTP, ce qui permet de le tester sous Node avec des réponses
+ * conformes à API.md (`engine.client.spec.ts`, `npm run test:engine`).
+ * Le service injectable est `engine.service.ts`.
+ */
+import { Observable, exhaustMap, takeWhile, timer } from 'rxjs';
+
+// ── §2 Erreurs ────────────────────────────────────────────────────────────────
+
+/** Codes de `error` (API.md §2). */
+export type EngineErrorCode =
+  | 'unauthorized' | 'forbidden' | 'not_initialized' | 'not_found' | 'invalid'
+  | 'name_refused' | 'github_not_linked' | 'github_scope' | 'busy' | 'job_exists'
+  | 'queue_full' | 'workspace_limit' | 'sql_error' | 'sql_timeout' | 'upstream'
+  | 'unavailable' | 'failed';
+
+/**
+ * Erreur normalisée. `code` vaut un `EngineErrorCode`, ou l'un des deux codes
+ * PROPRES À CE CLIENT (jamais rendus par le moteur) :
+ *  - `no_engine` : pas de réponse JSON du moteur (réseau coupé, moteur non
+ *    déployé — Caddy répond alors sa page 404 —, 502/504 du proxy) ;
+ *  - `unexpected` : réponse d'erreur JSON sans champ `error` reconnaissable.
+ */
+export interface EngineError {
+  status: number;
+  code: EngineErrorCode | 'no_engine' | 'unexpected';
+  /** Phrase affichable telle quelle. */
+  detail: string;
+  reasons: string[];
+  /** `github_not_linked` / `github_scope`. */
+  connectUrl: string | null;
+  /** `job_exists`. */
+  jobId: string | null;
+  /** `sql_error`. */
+  sqlstate: string | null;
+  /** `upstream`. */
+  service: string | null;
+  /** `workspace_limit`. */
+  open: number | null;
+  max: number | null;
+}
+
+function str(v: unknown): string | null {
+  return typeof v === 'string' && v !== '' ? v : null;
+}
+
+function num(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/** Normalise ce que le transport a levé (forme `HttpErrorResponse` : `{status, error}`). */
+export function toEngineError(err: unknown): EngineError {
+  const e = (err ?? {}) as { status?: unknown; error?: unknown };
+  const status = typeof e.status === 'number' ? e.status : 0;
+  const body = (e.error !== null && typeof e.error === 'object' ? e.error : {}) as Record<string, unknown>;
+  const code = str(body['error']);
+  const base = {
+    status,
+    reasons: Array.isArray(body['reasons']) ? body['reasons'].filter((r): r is string => typeof r === 'string') : [],
+    connectUrl: str(body['connect_url']),
+    jobId: str(body['job_id']),
+    sqlstate: str(body['sqlstate']),
+    service: str(body['service']),
+    open: num(body['open']),
+    max: num(body['max']),
+  };
+  if (code) {
+    return { ...base, code: code as EngineErrorCode, detail: str(body['detail']) ?? `Erreur du moteur (${code}).` };
+  }
+  if (status === 0 || status === 404 || status === 502 || status === 503 || status === 504) {
+    return {
+      ...base, code: 'no_engine',
+      detail: 'Le moteur du lab ne répond pas. Réessayez dans un instant ; si cela persiste, prévenez l\'administrateur.',
+    };
+  }
+  return { ...base, code: 'unexpected', detail: `Réponse inattendue du moteur (HTTP ${status}).` };
+}
+
+// ── §3.1 Identité ─────────────────────────────────────────────────────────────
+
+/** `workspace` de `GET /me`, `GET /devs` et de la réponse d'ouverture (§3.6). */
+export interface WorkspaceInfo {
+  open: boolean;
+  app?: string;
+  opened_by?: string;
+  opened_at?: string;
+  last_activity?: string;
+  github_token?: boolean;
+}
+
+export interface RemainingStep {
+  step: 'init' | 'link_github' | string;
+  detail: string;
+  url?: string;
+}
+
+export interface GithubLink {
+  account?: string;
+  scope?: string;
+  connect_url?: string;
+  error?: string;
+}
+
+export interface DatabaseInfo {
+  host: string;
+  name: string;
+  user: string;
+  /** Présent dans le détail d'un projet seulement. */
+  schema?: string;
+}
+
+export interface Me {
+  username: string;
+  uid: string | null;
+  is_superuser: boolean;
+  eligible: boolean;
+  ineligible_reason: null | 'invalid_uid' | 'not_in_developers';
+  initialized: boolean;
+  github_linked: boolean | null;
+  github: GithubLink | null;
+  database: DatabaseInfo | null;
+  mcp_url: string;
+  oauth_hub_url: string;
+  workspace: WorkspaceInfo | null;
+  scope_app: string | null;
+  viewed_as: string | null;
+  remaining: RemainingStep[];
+}
+
+export interface InitStep { name: string; done: boolean; detail: string; }
+export interface MeInit extends Me { steps: InitStep[]; }
+
+export interface Group { name: string; label: string; }
+export interface DevSummary { uid: string; is_superuser: boolean; projects: number; workspace: WorkspaceInfo; }
+
+/** Les quatre profils d'I6 (API.md §3.1). */
+export type Profile = 'superuser' | 'dev' | 'admin_only' | 'none';
+
+export function profileOf(me: Pick<Me, 'is_superuser' | 'eligible'>, isAdmin: boolean): Profile {
+  if (me.is_superuser) return 'superuser';
+  if (me.eligible) return 'dev';
+  return isAdmin ? 'admin_only' : 'none';
+}
+
+// ── §3.2 Projets ──────────────────────────────────────────────────────────────
+
+export type ProjectState = 'running' | 'partial' | 'stopped' | 'never_deployed' | 'unknown';
+export type TestVerdict = 'ok' | 'ko' | 'absent' | 'non-lancé';
+export interface DeployTests { backend: TestVerdict; cloisonnement: TestVerdict; }
+
+export interface Project {
+  name: string;
+  owner: string;
+  repo_url: string | null;
+  urls: { app: string | null; api: string | null };
+  ports: { backend: number | null; frontend: number | null };
+  state: ProjectState;
+  deployed: { sha: string; at: string; tests: DeployTests | null } | null;
+  workspace: { open: boolean };
+}
+
+export interface ServiceState {
+  service: string;
+  state: string;
+  health: '' | 'healthy' | 'unhealthy' | 'starting';
+  image: string;
+}
+
+export interface ProjectDetail extends Project {
+  services: ServiceState[];
+  database: DatabaseInfo;
+  auto_deploy: { enabled: boolean; available: boolean };
+  mcp_url: string;
+}
+
+export type ProjectType = 'django' | 'django-angular' | 'angular';
+export interface NewProject {
+  name: string;
+  type: ProjectType;
+  visibility: 'private' | 'public';
+  required_groups: string[];
+}
+export interface NameCheck { ok: boolean; reasons: string[]; }
+
+// ── §3.3 – §3.6 ───────────────────────────────────────────────────────────────
+
+export type JobKind = 'create' | 'deploy' | 'tests';
+export type JobState = 'queued' | 'running' | 'succeeded' | 'failed';
+export interface JobTicket { job_id: string; kind: JobKind; app: string; state: JobState; jobs_ahead: number; }
+
+export interface Commit { sha: string; message: string; author: string; date: string; deployed: boolean; }
+export interface Commits { app: string; repository: string; branch: string; commits: Commit[]; }
+
+export interface Logs { app: string; service: string | null; tail: number; truncated: boolean; lines: string[]; }
+
+export interface EnvVar { key: string; managed: boolean; value: string | null; }
+
+export type SqlCell = string | number | boolean | null | object;
+export interface SqlResult {
+  columns: string[];
+  rows: SqlCell[][];
+  truncated: boolean;
+  row_count: number;
+  status: string;
+  database: string;
+  role: string;
+  schema: string;
+}
+
+export interface TicketRequest { title: string; body: string; scope: 'app' | 'lab'; }
+export interface Ticket { repository: string; number: number; url: string; }
+export interface AutoDeploy { app: string; enabled: boolean; available: boolean; }
+
+export interface WorkspaceOpened {
+  url: string;
+  uid: string;
+  app: string;
+  reused: boolean;
+  ticket_expires_in: number;
+  workspace: WorkspaceInfo;
+}
+
+// ── §4 Jobs ───────────────────────────────────────────────────────────────────
+
+export interface JobTestCase { title: string; status: 'PASSED' | 'FAILED' | 'ERROR'; message: string; duration_ms: number; }
+
+/** Union des champs de `result` pour les trois `kind` (API.md §4) — tous facultatifs sauf `ok`. */
+export interface JobResult {
+  ok: boolean;
+  step?: string;
+  error?: string;
+  exit_code?: number;
+  reasons?: string[];
+  sha?: string;
+  at?: string;
+  /** `deploy` : verdicts ; `tests` : liste des cas. */
+  tests?: DeployTests | JobTestCase[];
+  app?: string;
+  repo_url?: string;
+  auto_deploy_available?: boolean;
+  rollback_complete?: boolean;
+  rollback?: string[];
+  found?: boolean;
+  all_passed?: boolean;
+  summary?: string;
+}
+
+export interface Job {
+  job_id: string;
+  kind: JobKind;
+  app: string;
+  state: JobState;
+  terminal: boolean;
+  step: string | null;
+  launched_by: string;
+  created_at: string;
+  started_at: string | null;
+  ended_at: string | null;
+  jobs_ahead: number;
+  log_lines_total: number;
+  log: string[];
+  result: JobResult | null;
+}
+
+/** Verdicts d'un déploiement, ou null si `tests` est la liste des cas d'un job `tests`. */
+export function deployVerdicts(result: JobResult | null): DeployTests | null {
+  const t = result?.tests;
+  return t && !Array.isArray(t) ? t : null;
+}
+
+/** Cas d'un job `tests`, ou [] . */
+export function testCases(result: JobResult | null): JobTestCase[] {
+  const t = result?.tests;
+  return Array.isArray(t) ? t : [];
+}
+
+// ── Client ────────────────────────────────────────────────────────────────────
+
+export interface EngineRequest {
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  /** Chemin sous `/mcp/api`, commençant par « / ». */
+  path: string;
+  body?: unknown;
+  params?: Record<string, string>;
+}
+
+export type EngineTransport = (req: EngineRequest) => Observable<unknown>;
+
+/** Rythme d'interrogation d'un job conseillé par API.md §4. */
+export const JOB_POLL_MS = 2000;
+
+const seg = encodeURIComponent;
+
+export class EngineClient {
+  constructor(private readonly send: EngineTransport) {}
+
+  private call<T>(method: EngineRequest['method'], path: string, body?: unknown,
+                  params?: Record<string, string>): Observable<T> {
+    const req: EngineRequest = { method, path };
+    if (body !== undefined) req.body = body;
+    if (params && Object.keys(params).length) req.params = params;
+    return this.send(req) as Observable<T>;
+  }
+
+  private static as(asUid?: string | null): Record<string, string> | undefined {
+    return asUid ? { as: asUid } : undefined;
+  }
+
+  // §3.1
+  me(asUid?: string | null): Observable<Me> { return this.call('GET', '/me', undefined, EngineClient.as(asUid)); }
+  meInit(): Observable<MeInit> { return this.call('POST', '/me/init'); }
+  groups(): Observable<{ groups: Group[] }> { return this.call('GET', '/groups'); }
+  devs(): Observable<{ devs: DevSummary[] }> { return this.call('GET', '/devs'); }
+
+  // §3.2
+  projects(asUid?: string | null): Observable<{ count: number; projects: Project[] }> {
+    return this.call('GET', '/projects', undefined, EngineClient.as(asUid));
+  }
+  checkName(name: string): Observable<NameCheck> { return this.call('POST', '/projects/check-name', { name }); }
+  createProject(project: NewProject): Observable<JobTicket> { return this.call('POST', '/projects', project); }
+  project(app: string): Observable<ProjectDetail> { return this.call('GET', `/projects/${seg(app)}`); }
+
+  // §3.3
+  deploy(app: string, sha?: string | null): Observable<JobTicket> {
+    return this.call('POST', `/projects/${seg(app)}/deploy`, sha ? { sha } : {});
+  }
+  commits(app: string): Observable<Commits> { return this.call('GET', `/projects/${seg(app)}/commits`); }
+
+  // §3.4
+  logs(app: string, service?: string | null, tail?: number): Observable<Logs> {
+    const params: Record<string, string> = {};
+    if (service) params['service'] = service;
+    if (tail) params['tail'] = String(tail);
+    return this.call('GET', `/projects/${seg(app)}/logs`, undefined, params);
+  }
+  envList(app: string): Observable<{ app: string; variables: EnvVar[] }> {
+    return this.call('GET', `/projects/${seg(app)}/env`);
+  }
+  envSet(app: string, key: string, value: string): Observable<{ app: string; key: string; set: boolean; effective: string }> {
+    return this.call('PUT', `/projects/${seg(app)}/env/${seg(key)}`, { value });
+  }
+  envUnset(app: string, key: string): Observable<{ app: string; key: string; unset: boolean; effective: string }> {
+    return this.call('DELETE', `/projects/${seg(app)}/env/${seg(key)}`);
+  }
+  sql(app: string, query: string): Observable<SqlResult> {
+    return this.call('POST', `/projects/${seg(app)}/sql`, { query });
+  }
+
+  // §3.5
+  runTests(app: string): Observable<JobTicket> { return this.call('POST', `/projects/${seg(app)}/tests`); }
+  openTicket(app: string, ticket: TicketRequest): Observable<Ticket> {
+    return this.call('POST', `/projects/${seg(app)}/tickets`, ticket);
+  }
+  setAutoDeploy(app: string, enabled: boolean): Observable<AutoDeploy> {
+    return this.call('PUT', `/projects/${seg(app)}/auto-deploy`, { enabled });
+  }
+
+  // §3.6
+  workspaceOpen(app: string): Observable<WorkspaceOpened> { return this.call('POST', `/projects/${seg(app)}/workspace`); }
+  workspaceClose(app: string): Observable<{ app: string; closed: boolean }> {
+    return this.call('DELETE', `/projects/${seg(app)}/workspace`);
+  }
+
+  // §4
+  job(id: string, tail = 200): Observable<Job> {
+    return this.call('GET', `/jobs/${seg(id)}`, undefined, { tail: String(tail) });
+  }
+
+  /**
+   * Suit un job jusqu'à `terminal: true` (dernier état émis compris), puis se
+   * termine. Une interrogation à la fois : un tic qui tombe pendant qu'une
+   * réponse est attendue est ignoré. Une erreur (dont le 404 d'un job perdu au
+   * redémarrage du moteur) remonte telle quelle à l'abonné.
+   */
+  watchJob(id: string, periodMs = JOB_POLL_MS, tail = 200): Observable<Job> {
+    return timer(0, periodMs).pipe(
+      exhaustMap(() => this.job(id, tail)),
+      takeWhile(job => !job.terminal, true),
+    );
+  }
+}
+
+// ── Libellés d'affichage (aucune forme du moteur ici) ─────────────────────────
+
+export const STATE_LABELS: Record<ProjectState, string> = {
+  running: 'en service',
+  partial: 'partiel',
+  stopped: 'arrêté',
+  never_deployed: 'jamais déployé',
+  unknown: 'état inconnu',
+};
+
+export const VERDICT_LABELS: Record<TestVerdict, string> = {
+  'ok': 'réussis',
+  'ko': 'en échec',
+  'absent': 'absents',
+  'non-lancé': 'non lancés',
+};
+
+/** Libellés tolérants : une valeur que ce client ne connaît pas encore est affichée telle quelle. */
+export function stateLabel(state: string): string {
+  return (STATE_LABELS as Record<string, string>)[state] ?? state;
+}
+export function verdictLabel(verdict: string): string {
+  return (VERDICT_LABELS as Record<string, string>)[verdict] ?? verdict;
+}
+
+/** Lien navigable d'un dépôt (`….git` → page GitHub). */
+export function repoPage(repoUrl: string | null): string | null {
+  if (!repoUrl || !/^https:\/\//.test(repoUrl)) return null;
+  return repoUrl.replace(/\.git$/, '');
+}
+
+/**
+ * L'URL d'un espace de travail rendue par le moteur est suivie par
+ * `location.replace`, hors de l'assainissement d'Angular : on n'y va que si
+ * elle est bien sur l'origine du lab, sous `/ws/` (I3).
+ */
+export function isWorkspaceUrl(url: unknown, origin: string): url is string {
+  if (typeof url !== 'string') return false;
+  try {
+    const u = new URL(url);
+    return u.origin === origin && u.protocol === 'https:' && u.pathname.startsWith('/ws/');
+  } catch {
+    return false;
+  }
+}
+
+/** Règle du moteur pour une clé de variable (API.md §3.4). */
+export const ENV_KEY_RE = /^[A-Z][A-Z0-9_]{0,63}$/;
+/** Règle d'I1 pour un nom de projet — simple confort de saisie, `check-name` fait foi. */
+export const APP_NAME_RE = /^[a-z][a-z0-9-]{1,38}[a-z0-9]$/;

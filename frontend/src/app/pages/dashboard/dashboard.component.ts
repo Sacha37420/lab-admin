@@ -1,6 +1,8 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
+import { KeycloakService } from '../../core/keycloak.service';
+import { MesProjetsComponent } from '../projets/mes-projets.component';
 
 interface AppSpec {
   id: number;
@@ -19,12 +21,13 @@ function env() { return (window as unknown as EnvWindow).__env ?? {}; }
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [RouterLink],
+  imports: [RouterLink, MesProjetsComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })
 export class DashboardComponent implements OnInit {
   private http = inject(HttpClient);
+  protected kc = inject(KeycloakService);
 
   specs   = signal<AppSpec[]>([]);
   loading = signal(true);
@@ -35,6 +38,9 @@ export class DashboardComponent implements OnInit {
   get apiUrl() { return env().apiUrl ?? 'http://localhost:8083'; }
 
   ngOnInit() {
+    // Le catalogue app-builder est une vue d'admin : un développeur non-admin
+    // n'en voit rien (et l'API lui répondrait 403).
+    if (!this.kc.isAdmin) { this.loading.set(false); return; }
     // Lu directement depuis le backend de lab-admin (catalogue app-builder en
     // lecture seule cross-schema) — plus d'appel HTTP à app-builder.
     this.http.get<AppSpec[]>(`${this.apiUrl}/api/apps/public/`).subscribe({

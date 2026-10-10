@@ -1,0 +1,29 @@
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { EngineClient, EngineRequest } from './engine.client';
+
+interface EnvWindow {
+  __env?: { engineUrl?: string; storageUrl?: string };
+}
+
+/**
+ * Moteur du lab vu d'Angular : `EngineClient` (toutes les routes, tous les
+ * types — `engine.client.ts`) branché sur `HttpClient`. Même origine que
+ * lab-admin ; le jeton de l'utilisateur est posé par `authInterceptor`.
+ * lab-admin n'a aucun privilège propre ici : c'est le moteur qui contrôle.
+ */
+@Injectable({ providedIn: 'root' })
+export class EngineService extends EngineClient {
+  constructor() {
+    const http = inject(HttpClient);
+    const base = ((window as unknown as EnvWindow).__env?.engineUrl
+      ?? `${window.location.origin}/mcp/api`).replace(/\/+$/, '');
+    super((req: EngineRequest) =>
+      http.request<unknown>(req.method, `${base}${req.path}`, { body: req.body, params: req.params }));
+  }
+
+  /** Interface de `storage` (fichiers de l'utilisateur) — même origine, chemin Caddy `/storage/`. */
+  get storageUrl(): string {
+    return (window as unknown as EnvWindow).__env?.storageUrl ?? `${window.location.origin}/storage/`;
+  }
+}

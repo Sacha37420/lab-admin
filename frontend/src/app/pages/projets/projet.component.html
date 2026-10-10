@@ -1,0 +1,303 @@
+<div class="page">
+  <p><a routerLink="/" class="pj-back">← Mes projets</a></p>
+
+  @if (loading()) {
+    <div class="pj-state">Chargement du projet…</div>
+  } @else if (fatal(); as e) {
+    <div class="pj-state pj-error" role="alert">
+      @if (e.code === 'not_found') {
+        Projet « {{ app }} » introuvable, ou il ne vous appartient pas.
+      } @else { {{ e.detail }} }
+    </div>
+  } @else if (project(); as p) {
+    <section class="pj">
+      <div class="pj-head">
+        <h1>{{ p.name }}</h1>
+        <div class="pj-row">
+          <span [class]="'pj-badge ' + stateClass(p.state)">{{ stateLabel(p.state) }}</span>
+          <span class="pj-hint">propriétaire : {{ p.owner }}</span>
+          <button type="button" class="btn-secondary" (click)="reload()">Actualiser</button>
+        </div>
+      </div>
+
+      <!-- ── Éditeur ──────────────────────────────────────────────────────── -->
+      <div class="pj-card">
+        <h2>Éditeur du projet (VS Code)</h2>
+        <p class="pj-hint">
+          Un VS Code dans le navigateur, limité à ce projet, avec Claude Code et Mistral Vibe dans
+          son terminal (vos propres comptes). Un seul éditeur à la fois par personne ; il se ferme
+          après 30 minutes sans activité, sans rien perdre.
+        </p>
+        <div class="pj-row">
+          <button type="button" class="btn-primary" (click)="openWorkspace()" [disabled]="wsBusy()">
+            {{ wsBusy() ? 'Démarrage… (jusqu\'à 30 s)' : 'Ouvrir dans VS Code' }}
+          </button>
+          @if (p.workspace.open) {
+            <button type="button" class="pj-danger" (click)="closeWorkspace()" [disabled]="wsBusy()">Fermer l'éditeur</button>
+          }
+        </div>
+        @if (wsOpened(); as w) {
+          @if (!w.workspace.github_token) {
+            <p class="pj-hint">Éditeur ouvert sur le projet d'un autre : aucun jeton GitHub n'y est injecté (<code>git push</code> n'y est pas préconfiguré).</p>
+          }
+        }
+        @if (wsNotice()) { <p class="pj-hint" role="status">{{ wsNotice() }}</p> }
+        @if (wsError(); as e) {
+          <p class="pj-error" role="alert">{{ e.detail }}@if (e.code === 'workspace_limit' && e.max !== null) { ({{ e.open }}/{{ e.max }} éditeurs ouverts sur le lab)}</p>
+          @if (e.connectUrl) { <a class="btn-secondary" [href]="e.connectUrl" target="_blank" rel="noopener">Relier mon compte GitHub ↗</a> }
+        }
+      </div>
+
+      <!-- ── Déploiement ──────────────────────────────────────────────────── -->
+      <div class="pj-card">
+        <h2>Déploiement</h2>
+        @if (p.deployed; as d) {
+          <dl class="pj-dl">
+            <dt>En service</dt><dd><code>{{ d.sha.slice(0, 12) }}</code> — {{ d.at | date:'dd/MM/yyyy HH:mm' }}</dd>
+            @if (d.tests; as t) {
+              <dt>Tests</dt>
+              <dd>
+                backend <strong [class.pj-error]="t.backend === 'ko'">{{ verdictLabel(t.backend) }}</strong>
+                · cloisonnement <strong [class.pj-error]="t.cloisonnement === 'ko'">{{ verdictLabel(t.cloisonnement) }}</strong>
+              </dd>
+            }
+          </dl>
+        } @else {
+          <p class="pj-hint">Ce projet n'a encore jamais été déployé.</p>
+        }
+
+        <p class="pj-hint">Seul un commit poussé sur GitHub est déployable. Par défaut : le dernier commit de la branche principale.</p>
+        <div class="pj-row">
+          @if (commits(); as c) {
+            <label class="pj-fld">
+              <span>Commit à déployer (branche {{ c.branch }})</span>
+              <select name="sha" [(ngModel)]="chosenSha" [disabled]="!!deployJobId()">
+                <option value="">Dernier commit poussé</option>
+                @for (commit of c.commits; track commit.sha) {
+                  <option [value]="commit.sha">
+                    {{ commit.sha.slice(0, 7) }} — {{ commit.message }} ({{ commit.author }}, {{ commit.date | date:'dd/MM HH:mm' }}){{ commit.deployed ? ' — en service' : '' }}
+                  </option>
+                }
+              </select>
+            </label>
+          } @else {
+            <button type="button" class="btn-secondary" (click)="loadCommits()" [disabled]="commitsLoading()">
+              {{ commitsLoading() ? 'Lecture de GitHub…' : 'Choisir un autre commit' }}
+            </button>
+          }
+          <button type="button" class="btn-primary" (click)="deploy()" [disabled]="launching() || !!deployJobId()">
+            {{ launching() ? 'Envoi…' : 'Déployer' }}
+          </button>
+        </div>
+        @if (commitsError(); as e) {
+          <p class="pj-error" role="alert">{{ e.detail }}</p>
+          @if (e.connectUrl) { <a class="btn-secondary" [href]="e.connectUrl" target="_blank" rel="noopener">Relier mon compte GitHub ↗</a> }
+        }
+        @if (deployError(); as e) {
+          <p class="pj-error" role="alert">{{ e.detail }}</p>
+          @if (e.reasons.length) { <ul class="pj-reasons">@for (r of e.reasons; track $index) { <li>{{ r }}</li> }</ul> }
+        }
+        @if (deployJobId()) {
+          <app-job-suivi [jobId]="deployJobId()" (fini)="onDeployDone($event)" />
+          <div><button type="button" class="btn-secondary" (click)="deployJobId.set(''); deployError.set(null)">Fermer le suivi</button></div>
+        }
+
+        <h3>Déploiement automatique</h3>
+        <label class="pj-check">
+          <input type="checkbox" #auto [checked]="p.auto_deploy.enabled" [disabled]="autoBusy()"
+                 (change)="setAutoDeploy(auto.checked)">
+          Déployer à chaque <code>git push</code> sur la branche principale
+        </label>
+        @if (!p.auto_deploy.available) {
+          <p class="pj-hint">Le webhook GitHub de ce projet n'existe pas encore : l'activer le crée avec votre compte GitHub.</p>
+        }
+        @if (autoError(); as e) {
+          <p class="pj-error" role="alert">{{ e.detail }}</p>
+          @if (e.connectUrl) { <a class="btn-secondary" [href]="e.connectUrl" target="_blank" rel="noopener">Relier mon compte GitHub ↗</a> }
+        }
+      </div>
+
+      <!-- ── Conteneurs et journaux ───────────────────────────────────────── -->
+      <div class="pj-card">
+        <h2>Conteneurs et journaux</h2>
+        @if (p.services.length === 0) {
+          <p class="pj-hint">Aucun conteneur.</p>
+        } @else {
+          <ul class="pj-list">
+            @for (s of p.services; track s.service) {
+              <li>
+                <span class="pj-item-name">{{ s.service }}</span>
+                <span class="pj-meta">
+                  <span [class]="'pj-badge ' + (s.state === 'running' ? 'pj-ok' : 'pj-ko')">{{ s.state }}</span>
+                  @if (s.health) { <span [class]="'pj-badge ' + (s.health === 'healthy' ? 'pj-ok' : s.health === 'starting' ? 'pj-warn' : 'pj-ko')">{{ s.health }}</span> }
+                </span>
+              </li>
+            }
+          </ul>
+        }
+        <div class="pj-row">
+          <label class="pj-fld">
+            <span>Service</span>
+            <select name="logService" [(ngModel)]="logService">
+              <option value="">Tous</option>
+              @for (s of p.services; track s.service) { <option [value]="s.service">{{ s.service }}</option> }
+            </select>
+          </label>
+          <label class="pj-fld">
+            <span>Lignes par conteneur</span>
+            <select name="logTail" [(ngModel)]="logTail">
+              <option [ngValue]="100">100</option>
+              <option [ngValue]="200">200</option>
+              <option [ngValue]="500">500</option>
+              <option [ngValue]="2000">2000</option>
+            </select>
+          </label>
+          <button type="button" class="btn-secondary" (click)="loadLogs()" [disabled]="logsLoading()">
+            {{ logsLoading() ? 'Lecture…' : (logs() ? 'Actualiser les journaux' : 'Afficher les journaux') }}
+          </button>
+        </div>
+        @if (logsError()) { <p class="pj-error" role="alert">{{ logsError() }}</p> }
+        @if (logs(); as l) {
+          @if (l.truncated) { <p class="pj-hint">Journal tronqué : seules les dernières lignes sont affichées.</p> }
+          <pre class="pj-pre">{{ l.lines.length ? l.lines.join('\n') : '(aucune ligne)' }}</pre>
+        }
+      </div>
+
+      <!-- ── Tests ────────────────────────────────────────────────────────── -->
+      <div class="pj-card">
+        <h2>Test de cloisonnement</h2>
+        <p class="pj-hint">Vérifie dans un vrai navigateur qu'un membre des groupes autorisés entre et qu'un non-membre est refusé.</p>
+        <div><button type="button" class="btn-secondary" (click)="runTests()" [disabled]="!!testsJobId()">Lancer le test</button></div>
+        @if (testsError(); as e) { <p class="pj-error" role="alert">{{ e.detail }}</p> }
+        @if (testsJobId()) {
+          <app-job-suivi [jobId]="testsJobId()" (fini)="reload()" />
+          <div><button type="button" class="btn-secondary" (click)="testsJobId.set(''); testsError.set(null)">Fermer le suivi</button></div>
+        }
+      </div>
+
+      <!-- ── Variables ────────────────────────────────────────────────────── -->
+      <div class="pj-card">
+        <h2>Variables d'environnement</h2>
+        @if (!envLoaded()) {
+          <div><button type="button" class="btn-secondary" (click)="loadEnv()">Afficher les variables</button></div>
+        } @else {
+          <ul class="pj-list">
+            @for (v of env(); track v.key) {
+              <li>
+                <div class="pj-item-main">
+                  <code>{{ v.key }}</code>
+                  @if (v.managed) {
+                    <span class="pj-hint">gérée par le lab — valeur masquée, non modifiable</span>
+                  } @else {
+                    <code>{{ v.value }}</code>
+                  }
+                </div>
+                @if (!v.managed) {
+                  <div class="pj-row">
+                    <button type="button" class="btn-secondary" (click)="editVar(v)">Modifier</button>
+                    <button type="button" class="pj-danger" (click)="removeVar(v)" [disabled]="envBusy()"
+                            [attr.aria-label]="'Supprimer ' + v.key">Supprimer</button>
+                  </div>
+                }
+              </li>
+            }
+          </ul>
+          <form class="pj-form" (ngSubmit)="saveVar()">
+            <div class="pj-row">
+              <label class="pj-fld">
+                <span>Clé</span>
+                <input type="text" name="envKey" [(ngModel)]="envKey" maxlength="64" autocomplete="off" spellcheck="false" placeholder="MA_CLE_API">
+              </label>
+              <label class="pj-fld">
+                <span>Valeur</span>
+                <input type="text" name="envValue" [(ngModel)]="envValue" maxlength="4096" autocomplete="off" spellcheck="false">
+              </label>
+            </div>
+            @if (envKey && !envKeyOk) { <p class="pj-hint">Clé : majuscules, chiffres et « _ », en commençant par une lettre.</p> }
+            <div><button type="submit" class="btn-primary" [disabled]="!envKeyOk || envBusy()">Enregistrer</button></div>
+          </form>
+          <p class="pj-hint">Toute modification prend effet au prochain déploiement.</p>
+        }
+        @if (envNotice()) { <p class="pj-success" role="status">{{ envNotice() }}</p> }
+        @if (envError()) { <p class="pj-error" role="alert">{{ envError() }}</p> }
+      </div>
+
+      <!-- ── Accès ────────────────────────────────────────────────────────── -->
+      <div class="pj-card">
+        <h2>Accès</h2>
+        <dl class="pj-dl">
+          <dt>Application</dt>
+          <dd>@if (p.urls.app; as u) { <a [href]="u" target="_blank" rel="noopener">{{ u }}</a> } @else { — }</dd>
+          @if (p.urls.api; as u) { <dt>API</dt><dd><a [href]="u" target="_blank" rel="noopener">{{ u }}</a></dd> }
+          <dt>Dépôt GitHub</dt>
+          <dd>@if (repoPage(p.repo_url); as u) { <a [href]="u" target="_blank" rel="noopener">{{ u }}</a> } @else { — }</dd>
+          <dt>Base — hôte</dt><dd><code>{{ p.database.host }}</code></dd>
+          <dt>Base — nom</dt><dd><code>{{ p.database.name }}</code></dd>
+          <dt>Base — rôle</dt><dd><code>{{ p.database.user }}</code></dd>
+          @if (p.database.schema) { <dt>Schéma</dt><dd><code>{{ p.database.schema }}</code></dd> }
+          <dt>Fichiers</dt><dd><a [href]="engine.storageUrl" target="_blank" rel="noopener">Mes fichiers dans storage ↗</a></dd>
+          <dt>MCP</dt><dd><code>{{ p.mcp_url }}</code></dd>
+        </dl>
+        <p class="pj-hint">Le mot de passe de la base n'est affiché nulle part : il est injecté dans l'app au déploiement.</p>
+
+        <h3>Console SQL</h3>
+        <p class="pj-hint">Exécutée avec votre rôle, dans votre base, sur le schéma de ce projet. 500 lignes et 10 secondes au plus.</p>
+        <form class="pj-form" (ngSubmit)="runSql()">
+          <label class="pj-fld">
+            <span>Requête</span>
+            <textarea name="query" [(ngModel)]="query" rows="4" spellcheck="false" placeholder="select * from …"></textarea>
+          </label>
+          <div><button type="submit" class="btn-secondary" [disabled]="sqlRunning() || !query.trim()">{{ sqlRunning() ? 'Exécution…' : 'Exécuter' }}</button></div>
+        </form>
+        @if (sqlError(); as e) {
+          <p class="pj-error" role="alert">{{ e.detail }}@if (e.sqlstate) { (SQLSTATE {{ e.sqlstate }})}</p>
+        }
+        @if (sqlResult(); as r) {
+          <p class="pj-hint">{{ r.status }} — {{ r.row_count }} ligne(s){{ r.truncated ? ', résultat tronqué à 500' : '' }} · schéma <code>{{ r.schema }}</code></p>
+          @if (r.columns.length) {
+            <div class="pj-table-wrap">
+              <table class="pj-table">
+                <thead><tr>@for (c of r.columns; track $index) { <th scope="col">{{ c }}</th> }</tr></thead>
+                <tbody>
+                  @for (row of r.rows; track $index) {
+                    <tr>@for (value of row; track $index) { <td>{{ cell(value) }}</td> }</tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        }
+      </div>
+
+      <!-- ── Ticket ───────────────────────────────────────────────────────── -->
+      <div class="pj-card">
+        <h2>Signaler un problème</h2>
+        <form class="pj-form" (ngSubmit)="sendTicket()">
+          <label class="pj-fld">
+            <span>Titre</span>
+            <input type="text" name="ticketTitle" [(ngModel)]="ticketTitle" maxlength="256" autocomplete="off">
+          </label>
+          <label class="pj-fld">
+            <span>Description</span>
+            <textarea name="ticketBody" [(ngModel)]="ticketBody" rows="4" maxlength="60000"></textarea>
+          </label>
+          <label class="pj-fld">
+            <span>Destinataire</span>
+            <select name="ticketScope" [(ngModel)]="ticketScope">
+              <option value="app">Le dépôt de ce projet</option>
+              <option value="lab">Le lab (problème du cadriciel)</option>
+            </select>
+          </label>
+          <div><button type="submit" class="btn-secondary" [disabled]="ticketBusy() || !ticketTitle.trim()">{{ ticketBusy() ? 'Envoi…' : 'Ouvrir le ticket' }}</button></div>
+        </form>
+        @if (ticket(); as t) {
+          <p class="pj-success" role="status">Ticket n° {{ t.number }} ouvert dans {{ t.repository }} — <a [href]="t.url" target="_blank" rel="noopener">le voir ↗</a></p>
+        }
+        @if (ticketError(); as e) {
+          <p class="pj-error" role="alert">{{ e.detail }}</p>
+          @if (e.connectUrl) { <a class="btn-secondary" [href]="e.connectUrl" target="_blank" rel="noopener">Relier mon compte GitHub ↗</a> }
+        }
+      </div>
+    </section>
+  }
+</div>

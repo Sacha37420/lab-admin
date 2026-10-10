@@ -105,10 +105,25 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'api.authentication.KeycloakJWTAuthentication',
     ],
+    # Permission par défaut FERMÉE (contrat multi-dev v4, I6) : lab-admin admet
+    # désormais deux groupes à sa porte (`admins`, `developers`), mais tout ce
+    # qui existait avant reste réservé à `admins`. Une vue qui ne déclare rien
+    # est donc une vue d'admin. Depuis le contrat v5 lab-admin n'a PLUS aucune
+    # vue ouverte aux non-admins : l'interface des développeurs (« Mes projets »)
+    # appelle directement l'API web du moteur (/mcp/api/…), pas ce backend.
+    # Ne jamais remettre IsAuthenticated ici : POST /api/lab-users/ (création de
+    # comptes via le compte de service manage-users) s'ouvrirait à tout membre
+    # de `developers`.
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
+        'api.permissions.IsLabAdmin',
     ],
 }
+
+# Groupe(s) qui donnent les fonctions d'administration de lab-admin. Constante
+# de code, volontairement pas une clé .env : la garde Angular (core/auth.guard.ts)
+# porte la même valeur.
+LAB_ADMIN_GROUPS = frozenset({'admins'})
+
 
 # ── Keycloak ───────────────────────────────────────────────────────────────────
 KEYCLOAK_ISSUER_URI = config(

@@ -4,11 +4,12 @@
     <h1>Accès restreint</h1>
     <p>
       Bonjour <strong>{{ kc.username }}</strong>, vous êtes bien authentifié(e).<br>
-      Cette application est réservée aux membres du groupe <code>admins</code>.
+      Cette page est réservée aux membres du groupe <code>admins</code>.
     </p>
     <p class="hint">
-      Demandez à un administrateur de vous ajouter au groupe LDAP
-      <code>admins</code> (annuaire OpenLDAP du realm <code>ssolab</code>).
+      Les développeurs retrouvent leurs projets sur la page d'accueil. Pour le
+      reste, demandez à un administrateur de vous
+      ajouter au groupe LDAP <code>admins</code>.
     </p>
     <button (click)="kc.logout()">Se déconnecter</button>
   </div>

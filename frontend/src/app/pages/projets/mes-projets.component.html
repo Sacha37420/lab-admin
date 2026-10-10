@@ -1,0 +1,218 @@
+@if (loading()) {
+  <div class="pj"><div class="pj-state">Chargement de vos projets…</div></div>
+} @else if (fatal(); as e) {
+  <!-- Moteur injoignable : un admin garde son accueil d'administration, dessous. -->
+  <div class="pj"><div class="pj-state pj-error" role="alert">{{ e.detail }}</div></div>
+} @else if (profile() === 'none') {
+  <div class="pj">
+    <div class="pj-card">
+      <h2>Bonjour {{ self()?.username }}</h2>
+      @if (self()?.ineligible_reason === 'invalid_uid') {
+        <p class="pj-hint">
+          Votre identifiant ne peut pas servir de compte développeur sur le lab (lettres minuscules
+          et chiffres uniquement). Rien à afficher ici.
+        </p>
+      } @else {
+        <p class="pj-hint">
+          Votre compte n'est pas membre du groupe <code>developers</code> : vous n'avez pas de
+          projets sur le lab. L'administrateur du lab peut vous y ajouter.
+        </p>
+      }
+    </div>
+  </div>
+} @else if (profile() === 'superuser' || profile() === 'dev') {
+  <section class="pj" aria-labelledby="pj-title">
+
+    <!-- ── Première connexion ─────────────────────────────────────────────── -->
+    @if (!self()?.initialized) {
+      <div class="pj-card" aria-live="polite">
+        <h2>Préparation de votre espace</h2>
+        @if (initRunning()) {
+          <p class="pj-hint">Inscription, base de données et dossier de travail en cours de création… (quelques secondes)</p>
+        } @else if (initError(); as e) {
+          <p class="pj-error" role="alert">{{ e.detail }}</p>
+          @if (e.code !== 'forbidden') {
+            <div><button type="button" class="btn-primary" (click)="init()">Réessayer</button></div>
+          }
+        }
+      </div>
+    } @else {
+
+      @if (initSteps().length) {
+        <div class="pj-card">
+          <h2>Votre espace est prêt</h2>
+          <ul class="pj-steps">
+            @for (s of initSteps(); track s.name) {
+              <li>{{ s.done ? '✓' : '✗' }} {{ s.detail }}</li>
+            }
+          </ul>
+        </div>
+      }
+
+      <!-- ── Étape restante : relier GitHub ─────────────────────────────── -->
+      @if (!viewingOther()) {
+        @if (githubStep(); as step) {
+          <div class="pj-card">
+            <h2>Dernière étape : relier votre compte GitHub</h2>
+            <p class="pj-hint">{{ step.detail }}</p>
+            <div class="pj-row">
+              <a class="btn-primary" [href]="step.url ?? self()?.oauth_hub_url" target="_blank" rel="noopener">Relier mon compte GitHub ↗</a>
+              <button type="button" class="btn-secondary" (click)="recheckGithub()" [disabled]="recheckingGithub()">
+                {{ recheckingGithub() ? 'Vérification…' : "C'est fait — vérifier" }}
+              </button>
+            </div>
+          </div>
+        } @else if (self()?.github_linked === null) {
+          <p class="pj-hint">L'état de la liaison GitHub est inconnu pour l'instant{{ self()?.github?.error ? ' (' + self()?.github?.error + ')' : '' }}.</p>
+        }
+      }
+
+      <!-- ── Superutilisateur : choix du dev ────────────────────────────── -->
+      @if (self()?.is_superuser && devs().length) {
+        <div class="pj-row">
+          <label class="pj-fld">
+            <span>Projets affichés</span>
+            <select #devSelect (change)="selectDev(devSelect.value)">
+              <option value="" [selected]="!viewingOther()">Tout le lab</option>
+              @for (d of devs(); track d.uid) {
+                @if (d.uid !== self()?.uid) {
+                  <option [value]="d.uid" [selected]="shown()?.viewed_as === d.uid">
+                    {{ d.uid }} — {{ d.projects }} projet(s){{ d.workspace.open ? ', éditeur ouvert' : '' }}
+                  </option>
+                }
+              }
+            </select>
+          </label>
+        </div>
+        @if (viewError()) { <p class="pj-error" role="alert">{{ viewError() }}</p> }
+      }
+
+      <!-- ── Liste ──────────────────────────────────────────────────────── -->
+      <div class="pj-head">
+        <h1 id="pj-title">{{ viewingOther() ? 'Projets de ' + shown()?.viewed_as : (showOwner() ? 'Projets du lab' : 'Mes projets') }}</h1>
+        @if (!viewingOther()) {
+          <button type="button" class="btn-primary" (click)="formOpen() ? formOpen.set(false) : openForm()"
+                  [attr.aria-expanded]="formOpen()">
+            {{ formOpen() ? 'Fermer' : 'Nouveau projet' }}
+          </button>
+        }
+      </div>
+
+      <!-- ── Nouveau projet ─────────────────────────────────────────────── -->
+      @if (formOpen() && !viewingOther()) {
+        <div class="pj-card">
+          <h2>Nouveau projet</h2>
+          @if (self()?.github_linked === false) {
+            <p class="pj-error">Reliez d'abord votre compte GitHub : le dépôt du projet est créé sous votre compte.</p>
+          }
+          <form class="pj-form" (ngSubmit)="create()">
+            <label class="pj-fld">
+              <span>Nom</span>
+              <input type="text" name="name" [ngModel]="newName" (ngModelChange)="onName($event)" maxlength="40"
+                     autocomplete="off" spellcheck="false" placeholder="mon-app" [disabled]="!!createJobId()">
+            </label>
+            @if (newName) {
+              @if (nameChecking()) {
+                <p class="pj-hint">Vérification du nom…</p>
+              } @else if (nameCheck(); as check) {
+                @if (check.ok) {
+                  <p class="pj-success">✓ Nom disponible — il servira d'adresse (<code>/{{ newName }}</code>), de dépôt et de schéma.</p>
+                } @else {
+                  <ul class="pj-reasons">@for (r of check.reasons; track $index) { <li>{{ r }}</li> }</ul>
+                }
+              } @else if (!nameShapeOk) {
+                <p class="pj-hint">3 à 40 caractères : minuscules, chiffres et tirets ; commence par une lettre.</p>
+              }
+            }
+
+            <div class="pj-row">
+              <label class="pj-fld">
+                <span>Type</span>
+                <select name="type" [(ngModel)]="newType" [disabled]="!!createJobId()">
+                  <option value="django-angular">Django + Angular</option>
+                  <option value="django">Django (API seule)</option>
+                  <option value="angular">Angular seul</option>
+                </select>
+              </label>
+              <label class="pj-fld">
+                <span>Dépôt GitHub</span>
+                <select name="visibility" [(ngModel)]="newVisibility" [disabled]="!!createJobId()">
+                  <option value="private">Privé</option>
+                  <option value="public">Public</option>
+                </select>
+              </label>
+            </div>
+
+            <fieldset class="pj-fld" [disabled]="!!createJobId()">
+              <span>Groupes autorisés à utiliser l'app (au moins un)</span>
+              @if (groupsError()) { <p class="pj-error">{{ groupsError() }}</p> }
+              <div class="pj-row">
+                @for (g of groups(); track g.name) {
+                  <label class="pj-check">
+                    <input type="checkbox" #box [checked]="selectedGroups().includes(g.name)"
+                           (change)="toggleGroup(g.name, box.checked)">
+                    {{ g.label }}
+                  </label>
+                }
+              </div>
+            </fieldset>
+
+            @if (createError(); as e) {
+              <p class="pj-error" role="alert">{{ e.detail }}</p>
+              @if (e.reasons.length) { <ul class="pj-reasons">@for (r of e.reasons; track $index) { <li>{{ r }}</li> }</ul> }
+              @if (e.connectUrl) { <a [href]="e.connectUrl" target="_blank" rel="noopener" class="btn-secondary">Relier mon compte GitHub ↗</a> }
+            }
+
+            @if (createJobId()) {
+              <app-job-suivi [jobId]="createJobId()" (fini)="onCreateDone($event)" />
+              <div class="pj-row">
+                @if (createdApp()) {
+                  <a class="btn-primary" [routerLink]="['/projets', createdApp()]">Ouvrir {{ createdApp() }}</a>
+                }
+                <button type="button" class="btn-secondary" (click)="resetCreate()">Créer un autre projet</button>
+              </div>
+            } @else {
+              <div><button type="submit" class="btn-primary" [disabled]="!canCreate">{{ creating() ? 'Envoi…' : 'Créer le projet' }}</button></div>
+            }
+          </form>
+        </div>
+      }
+
+      @if (projectsLoading()) {
+        <div class="pj-state">Chargement…</div>
+      } @else if (projectsError()) {
+        <div class="pj-state pj-error" role="alert">{{ projectsError() }}</div>
+      } @else if (projects().length === 0) {
+        <div class="pj-state">
+          {{ viewingOther() ? 'Aucun projet.' : 'Aucun projet pour l\'instant — créez le premier avec « Nouveau projet ».' }}
+        </div>
+      } @else {
+        <ul class="pj-list">
+          @for (p of projects(); track p.name) {
+            <li>
+              <div class="pj-item-main">
+                <span class="pj-item-name">{{ p.name }}</span>
+                <span class="pj-meta">
+                  <span class="pj-badge" [class]="'pj-badge ' + stateClass(p)">{{ stateLabel(p.state) }}</span>
+                  @if (showOwner()) { <span>{{ p.owner }}</span> }
+                  @if (p.deployed; as d) {
+                    <span>version <code>{{ d.sha.slice(0, 7) }}</code></span>
+                    @if (d.tests; as t) {
+                      <span [class.pj-error]="t.backend === 'ko'">tests {{ verdictLabel(t.backend) }}</span>
+                      <span [class.pj-error]="t.cloisonnement === 'ko'">cloisonnement {{ verdictLabel(t.cloisonnement) }}</span>
+                    }
+                  }
+                  @if (p.workspace.open) { <span class="pj-badge">éditeur ouvert</span> }
+                </span>
+              </div>
+              <div class="pj-row">
+                @if (p.urls.app; as u) { <a class="btn-secondary" [href]="u" target="_blank" rel="noopener">Voir l'app ↗</a> }
+                <a class="btn-primary" [routerLink]="['/projets', p.name]">Ouvrir</a>
+              </div>
+            </li>
+          }
+        </ul>
+      }
+    }
+  </section>
+}

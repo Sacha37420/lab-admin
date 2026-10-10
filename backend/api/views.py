@@ -4,7 +4,7 @@ import string
 from django.conf import settings
 from django.core.mail import send_mail
 from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny
 from rest_framework import generics, status
 from rest_framework.response import Response
 from .models import DebugRunJob, DebugTest, Department, UserRecord
@@ -20,7 +20,6 @@ from .tasks import run_debug_tests
 
 class MeView(APIView):
     """
-    permission_classes = [IsAuthenticated]
     GET /api/me/
     Retourne l'identité de l'utilisateur authentifié (depuis le JWT + DB).
     Crée un UserRecord à la première visite.

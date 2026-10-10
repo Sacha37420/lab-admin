@@ -51,6 +51,16 @@ export class KeycloakService {
     return (this.kc?.tokenParsed as Record<string, unknown>)?.['groups'] as string[] ?? [];
   }
 
+  /**
+   * Administrateur du lab (groupe `admins`). Depuis l'ouverture de lab-admin
+   * au groupe `developers`, être entré ne suffit plus : tout sauf la page
+   * d'accueil reste réservé aux admins — le backend applique la
+   * même règle par vue (api/permissions.py), ceci n'est que l'affichage.
+   */
+  get isAdmin(): boolean {
+    return this.groups.includes('admins');
+  }
+
   /** Token d'accès courant (Bearer). */
   getToken(): string | undefined {
     return this.kc?.token;

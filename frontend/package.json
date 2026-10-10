@@ -6,7 +6,8 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "test:engine": "esbuild src/app/core/engine.client.spec.ts --bundle --platform=node --format=esm --log-level=warning --outfile=node_modules/.cache/lab-admin/engine.client.spec.mjs && node --test node_modules/.cache/lab-admin/engine.client.spec.mjs"
   },
   "private": true,
   "packageManager": "npm@10.8.2",

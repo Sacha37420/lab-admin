@@ -13,6 +13,8 @@ window.__env = {
   keycloakClientId: "${KEYCLOAK_CLIENT_ID}",
   apiUrl:           "https://${DOMAIN}/lab-admin-api",
   appUrl:           "https://${DOMAIN}/lab-admin/",
+  engineUrl:        "https://${DOMAIN}/mcp/api",
+  storageUrl:       "https://${DOMAIN}/storage/",
   appBuilderUrl:    "https://${DOMAIN}/app-builder",
   codeServerUrl:    "https://${DOMAIN}/code"
 };
@@ -25,6 +27,8 @@ window.__env = {
   keycloakClientId: "${KEYCLOAK_CLIENT_ID}",
   apiUrl:           window.location.protocol + '//' + window.location.hostname + ':${PORT_BACKEND:-8000}',
   appUrl:           window.location.protocol + '//' + window.location.hostname + ':${PORT_FRONTEND:-4200}',
+  engineUrl:        window.location.origin + '/mcp/api',
+  storageUrl:       window.location.protocol + '//' + window.location.hostname + ':4211/',
   appBuilderUrl:    window.location.protocol + '//' + window.location.hostname + ':4205',
   codeServerUrl:    ''
 };

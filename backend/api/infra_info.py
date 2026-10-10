@@ -17,13 +17,12 @@ from django.conf import settings
 from . import lab_groups
 
 _PORTS_FILE = '/mnt/ports'
-_DEV_ROOT = '/mnt/dev'
 _HANDLE_PATH_RE = re.compile(r'caddy\.handle_path:\s*"(/[^"]*)/\*"')
 
 
 def _is_real_app(name: str) -> bool:
     """Une app existe si son dossier porte un docker-compose.yml."""
-    return os.path.isfile(f'{_DEV_ROOT}/{name}/docker-compose.yml')
+    return os.path.isfile(os.path.join(lab_groups.app_dir(name), 'docker-compose.yml'))
 
 
 def _caddy_paths(app: str) -> tuple[str | None, str | None]:
@@ -33,7 +32,7 @@ def _caddy_paths(app: str) -> tuple[str | None, str | None]:
     d'où le bug historique des liens faux basés sur le nom de dossier. Même
     logique que front_prefix() dans scripts/complete_404.sh."""
     try:
-        with open(f'{_DEV_ROOT}/{app}/docker-compose.yml', encoding='utf-8') as f:
+        with open(os.path.join(lab_groups.app_dir(app), 'docker-compose.yml'), encoding='utf-8') as f:
             content = f.read()
     except OSError:
         return None, None

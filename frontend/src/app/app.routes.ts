@@ -1,12 +1,21 @@
 import { Routes } from '@angular/router';
-import { adminGuard } from './core/auth.guard';
+import { adminGuard, labGuard } from './core/auth.guard';
 
 export const routes: Routes = [
   {
     path: '',
     loadComponent: () =>
       import('./pages/dashboard/dashboard.component').then(m => m.DashboardComponent),
-    canActivate: [adminGuard],
+    // Seule route ouverte aux développeurs non-admins.
+    canActivate: [labGuard],
+  },
+  {
+    // Page d'un projet : ouverte aux développeurs. C'est le MOTEUR qui vérifie
+    // que le projet appartient à l'appelant — ce backend n'est pas sollicité.
+    path: 'projets/:app',
+    loadComponent: () =>
+      import('./pages/projets/projet.component').then(m => m.ProjetComponent),
+    canActivate: [labGuard],
   },
   {
     path: 'code',

@@ -9,6 +9,8 @@ interface NavItem {
   abbr: string;
   path: string;
   exact?: boolean;
+  /** Page réservée au groupe `admins` (adminGuard sur sa route). */
+  adminOnly?: boolean;
 }
 
 const MOBILE_CLOSE_ANIM_MS = 220;
@@ -31,14 +33,21 @@ export class AppComponent {
   protected noop = (): void => {};
   protected closeMobileFn = (): void => this.closeMobile();
 
-  readonly navItems: NavItem[] = [
+  private readonly allNavItems: NavItem[] = [
     { path: '/',                   label: 'Accueil',           abbr: 'Ac', exact: true },
-    { path: '/code',                label: 'Code',               abbr: 'Co' },
-    { path: '/apps-hebergees',      label: 'Apps du lab',        abbr: 'La' },
-    { path: '/outils',              label: 'Outils',             abbr: 'Ou' },
-    { path: '/nouvel-utilisateur',  label: 'Nouvel utilisateur', abbr: 'Nu' },
-    { path: '/debug',               label: 'Debug',              abbr: 'De' },
+    { path: '/code',                label: 'Code',               abbr: 'Co', adminOnly: true },
+    { path: '/apps-hebergees',      label: 'Apps du lab',        abbr: 'La', adminOnly: true },
+    { path: '/outils',              label: 'Outils',             abbr: 'Ou', adminOnly: true },
+    { path: '/nouvel-utilisateur',  label: 'Nouvel utilisateur', abbr: 'Nu', adminOnly: true },
+    { path: '/debug',               label: 'Debug',              abbr: 'De', adminOnly: true },
   ];
+
+  /** Un développeur non-admin ne voit aucun lien vers une page qui le refuserait. */
+  get navItems(): NavItem[] {
+    if (this.kc.isAdmin) return this.allNavItems;
+    // Pour lui, l'accueil EST « Mes projets ».
+    return this.allNavItems.filter(i => !i.adminOnly).map(i => ({ ...i, label: 'Mes projets', abbr: 'Pr' }));
+  }
 
   @ViewChild('closeBtn') private closeBtnRef?: ElementRef<HTMLButtonElement>;
   @ViewChild('burgerBtn') private burgerBtnRef?: ElementRef<HTMLButtonElement>;
