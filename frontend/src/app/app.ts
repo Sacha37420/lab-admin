@@ -34,7 +34,12 @@ export class AppComponent {
   protected closeMobileFn = (): void => this.closeMobile();
 
   private readonly allNavItems: NavItem[] = [
-    { path: '/',                   label: 'Accueil',           abbr: 'Ac', exact: true },
+    // Les trois pages de tout le monde.
+    { path: '/',                   label: 'Accueil',            abbr: 'Ac', exact: true },
+    { path: '/services',            label: 'Services',           abbr: 'Se' },
+    { path: '/projets',             label: 'Projets',            abbr: 'Pr' },
+    // Administration (adminGuard sur chaque route).
+    { path: '/conception',          label: 'Conception',         abbr: 'Cn', adminOnly: true },
     { path: '/code',                label: 'Code',               abbr: 'Co', adminOnly: true },
     { path: '/apps-hebergees',      label: 'Apps du lab',        abbr: 'La', adminOnly: true },
     { path: '/outils',              label: 'Outils',             abbr: 'Ou', adminOnly: true },
@@ -42,11 +47,9 @@ export class AppComponent {
     { path: '/debug',               label: 'Debug',              abbr: 'De', adminOnly: true },
   ];
 
-  /** Un développeur non-admin ne voit aucun lien vers une page qui le refuserait. */
+  /** Un non-admin ne voit aucun lien vers une page qui le refuserait. */
   get navItems(): NavItem[] {
-    if (this.kc.isAdmin) return this.allNavItems;
-    // Pour lui, l'accueil EST « Mes projets ».
-    return this.allNavItems.filter(i => !i.adminOnly).map(i => ({ ...i, label: 'Mes projets', abbr: 'Pr' }));
+    return this.kc.isAdmin ? this.allNavItems : this.allNavItems.filter(i => !i.adminOnly);
   }
 
   @ViewChild('closeBtn') private closeBtnRef?: ElementRef<HTMLButtonElement>;

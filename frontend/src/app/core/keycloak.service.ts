@@ -15,6 +15,13 @@ interface EnvWindow {
 @Injectable({ providedIn: 'root' })
 export class KeycloakService {
   private kc!: Keycloak;
+  private baseUrl = '';
+  private realm = 'ssolab';
+
+  /** Page « Mon compte » de Keycloak (mot de passe, sessions) — ouverte à tout compte du realm. */
+  get accountUrl(): string {
+    return this.baseUrl ? `${this.baseUrl}/realms/${encodeURIComponent(this.realm)}/account/` : '';
+  }
 
   /**
    * Initialise Keycloak avec login-required.
@@ -24,6 +31,8 @@ export class KeycloakService {
   async init(): Promise<boolean> {
     const env = (window as unknown as EnvWindow).__env ?? {};
 
+    this.baseUrl = (env.keycloakUrl ?? (window.location.protocol + '//' + window.location.hostname + ':8080')).replace(/\/+$/, '');
+    this.realm = env.keycloakRealm ?? 'ssolab';
     this.kc = new Keycloak({
       url:      env.keycloakUrl      ?? (window.location.protocol + '//' + window.location.hostname + ':8080'),
       realm:    env.keycloakRealm    ?? 'ssolab',

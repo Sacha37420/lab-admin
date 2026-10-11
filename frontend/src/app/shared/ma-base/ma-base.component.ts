@@ -80,6 +80,12 @@ import { preopenTab, sendTab } from '../../core/tool-tab';
               }
             </ul>
           }
+          @if (pgBusy()) {
+            <p class="pj-hint" role="status">
+              pgAdmin démarre… {{ pgElapsed() }} s. Comptez 30 à 90 secondes : l'onglet qui vient de
+              s'ouvrir se remplira tout seul, gardez cette page ouverte.
+            </p>
+          }
           @if (pgNotice()) { <p class="pj-hint" role="status">{{ pgNotice() }}</p> }
           @if (pgError(); as e) { <p class="pj-error" role="alert">{{ message(e) }}</p> }
         } @else {
@@ -108,6 +114,9 @@ export class MaBaseComponent implements OnChanges, OnDestroy {
   private hideTimer?: ReturnType<typeof setTimeout>;
 
   pgBusy = signal(false);
+  /** Secondes écoulées depuis le clic : l'ouverture prend 35 à 90 s. */
+  pgElapsed = signal(0);
+  private pgTimer?: ReturnType<typeof setInterval>;
   pgOpen = signal(false);
   pgError = signal<EngineError | null>(null);
   pgNotice = signal('');
@@ -121,7 +130,16 @@ export class MaBaseComponent implements OnChanges, OnDestroy {
     }
   }
 
-  ngOnDestroy(): void { this.hide(); }
+  ngOnDestroy(): void { this.hide(); this.stopClock(); }
+
+  private startClock(): void {
+    this.stopClock();
+    const t0 = Date.now();
+    this.pgElapsed.set(0);
+    this.pgTimer = setInterval(() => this.pgElapsed.set(Math.round((Date.now() - t0) / 1000)), 1000);
+  }
+
+  private stopClock(): void { clearInterval(this.pgTimer); }
 
   @HostListener('document:visibilitychange')
   onVisibility(): void { if (document.hidden) this.hide(); }
@@ -162,12 +180,13 @@ export class MaBaseComponent implements OnChanges, OnDestroy {
   openPgadmin(): void {
     if (!this.actions || this.pgBusy()) return;
     this.pgBusy.set(true);
+    this.startClock();
     this.pgError.set(null);
     this.pgNotice.set('');
-    const tab = preopenTab('Ouverture de pgAdmin…');
+    const tab = preopenTab('pgAdmin démarre… (30 à 90 secondes, cette page se remplira toute seule)');
     this.engine.pgadminOpen().subscribe({
       next: opened => {
-        this.pgBusy.set(false);
+        this.pgBusy.set(false); this.stopClock();
         if (!isPgadminUrl(opened.url, window.location.origin)) {
           tab?.close();
           this.pgNotice.set("Le moteur a rendu une adresse de pgAdmin inattendue : elle n'a pas été ouverte.");
@@ -179,7 +198,7 @@ export class MaBaseComponent implements OnChanges, OnDestroy {
           this.pgNotice.set('Le navigateur a bloqué le nouvel onglet : autorisez les fenêtres surgissantes pour ce site, puis cliquez de nouveau.');
         }
       },
-      error: err => { this.pgBusy.set(false); tab?.close(); this.pgError.set(toEngineError(err)); },
+      error: err => { this.pgBusy.set(false); this.stopClock(); tab?.close(); this.pgError.set(toEngineError(err)); },
     });
   }
 

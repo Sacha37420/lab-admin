@@ -160,7 +160,18 @@ export type ProjectState = 'running' | 'partial' | 'stopped' | 'never_deployed' 
 export type TestVerdict = 'ok' | 'ko' | 'absent' | 'non-lancé';
 export interface DeployTests { backend: TestVerdict; cloisonnement: TestVerdict; }
 
+/** Écart avec GitHub (contrat I5 v8). Vient d'un cache du moteur. */
+export type GithubStatus = 'up_to_date' | 'behind' | 'not_deployed' | 'unknown' | 'unreachable' | 'no_repo';
+export interface GithubGap {
+  status: GithubStatus;
+  head: string | null;
+  behind: number | null;
+  checked_at: string | null;
+}
+
 export interface Project {
+  /** Absent tant que le moteur en service ne le rend pas : à tolérer (« — »). */
+  github?: GithubGap | null;
   name: string;
   owner: string;
   repo_url: string | null;
@@ -342,8 +353,12 @@ export class EngineClient {
   devs(): Observable<{ devs: DevSummary[] }> { return this.call('GET', '/devs'); }
 
   // §3.2
-  projects(asUid?: string | null): Observable<{ count: number; projects: Project[] }> {
-    return this.call('GET', '/projects', undefined, EngineClient.as(asUid));
+  /** `refresh` : demande au moteur de relire GitHub ; il rend aussitôt ce qu'il sait déjà. */
+  projects(asUid?: string | null, refresh = false): Observable<{ count: number; projects: Project[] }> {
+    const params: Record<string, string> = {};
+    if (asUid) params['as'] = asUid;
+    if (refresh) params['refresh'] = '1';
+    return this.call('GET', '/projects', undefined, params);
   }
   checkName(name: string): Observable<NameCheck> { return this.call('POST', '/projects/check-name', { name }); }
   createProject(project: NewProject): Observable<JobTicket> { return this.call('POST', '/projects', project); }
@@ -437,6 +452,36 @@ export function stateLabel(state: string): string {
 }
 export function verdictLabel(verdict: string): string {
   return (VERDICT_LABELS as Record<string, string>)[verdict] ?? verdict;
+}
+
+/**
+ * Écart avec GitHub, en clair. `tone` choisit la couleur de la pastille ;
+ * un champ absent ou d'un statut que ce client ne connaît pas donne « — ».
+ */
+export function githubGapLabel(github: GithubGap | null | undefined): { label: string; tone: '' | 'ok' | 'warn' | 'ko' } {
+  if (!github || typeof github.status !== 'string') return { label: '—', tone: '' };
+  switch (github.status) {
+    case 'up_to_date': return { label: 'à jour', tone: 'ok' };
+    case 'behind': {
+      const n = typeof github.behind === 'number' && github.behind > 0 ? github.behind : null;
+      return { label: n === null ? 'en retard sur GitHub' : n === 1 ? '1 commit en retard' : `${n} commits en retard`, tone: 'warn' };
+    }
+    case 'not_deployed': return { label: 'rien en service', tone: '' };
+    case 'unknown': return { label: 'version inconnue', tone: '' };
+    case 'unreachable': return { label: 'dépôt injoignable', tone: 'ko' };
+    case 'no_repo': return { label: 'pas de dépôt GitHub', tone: '' };
+    default: return { label: '—', tone: '' };
+  }
+}
+
+/** Les chiffres de l'accueil. `behind` vaut null si le moteur ne rend pas encore `github`. */
+export function projectCounts(projects: Project[]): { total: number; running: number; behind: number | null } {
+  const known = projects.some(p => !!p.github);
+  return {
+    total: projects.length,
+    running: projects.filter(p => p.state === 'running').length,
+    behind: known ? projects.filter(p => p.github?.status === 'behind').length : null,
+  };
 }
 
 /** Lien navigable d'un dépôt (`….git` → page GitHub). */

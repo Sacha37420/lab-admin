@@ -1,31 +1,34 @@
 import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subject, catchError, debounceTime, distinctUntilChanged, of, switchMap, tap } from 'rxjs';
 import { EngineService } from '../../core/engine.service';
 import { KeycloakService } from '../../core/keycloak.service';
 import {
-  APP_NAME_RE, DevSummary, EngineError, Group, InitStep, Job, Me, NameCheck, Profile, Project, ProjectType,
+  APP_NAME_RE, DevSummary, EngineError, Group, Job, Me, NameCheck, Profile, Project, ProjectType,
+  githubGapLabel, isWorkspaceUrl,
   profileOf, stateLabel, toEngineError, verdictLabel,
 } from '../../core/engine.client';
 import { JobSuiviComponent } from '../../shared/job-suivi/job-suivi.component';
-import { MaBaseComponent } from '../../shared/ma-base/ma-base.component';
+import { preopenTab, sendTab } from '../../core/tool-tab';
 
 /**
- * Accueil des développeurs : « Mes projets » (contrat multi-dev I6 v6).
- * Tout vient du moteur (`/mcp/api`, `core/engine.client.ts`) — lab-admin n'a
- * aucun privilège propre. Selon le profil rendu par `GET /me` :
+ * Page « Projets » (`/projets`, contrat multi-dev I6 v8) : une ligne par projet
+ * — état, version en service, écart avec GitHub, lien vers l'app, VS Code,
+ * détail — et « Nouveau projet ». Tout vient du moteur (`core/engine.client.ts`).
  *
- *  - superuser  : tous les projets, choix d'un dev (`?as=`) ;
- *  - dev        : initialisation à la première connexion, étape GitHub, ses projets ;
- *  - admin_only : RIEN ici (l'accueil d'administration est rendu par le parent) ;
- *  - none       : un message qui dit pourquoi.
+ *  - superuser  : tous les projets du lab avec leur propriétaire, `?as=<uid>` ;
+ *  - dev        : ses projets ;
+ *  - admin_only / none : un message, aucune liste (ils n'ont pas de projets).
+ *
+ * La première connexion (`me/init`) se joue sur l'accueil, pas ici.
  */
 @Component({
   selector: 'app-mes-projets',
   standalone: true,
-  imports: [FormsModule, RouterLink, JobSuiviComponent, MaBaseComponent],
+  imports: [FormsModule, RouterLink, DatePipe, JobSuiviComponent],
   templateUrl: './mes-projets.component.html',
 })
 export class MesProjetsComponent implements OnInit {
@@ -48,19 +51,15 @@ export class MesProjetsComponent implements OnInit {
   shown = signal<Me | null>(null);
   viewError = signal('');
 
-  initRunning = signal(false);
-  initSteps = signal<InitStep[]>([]);
-  initError = signal<EngineError | null>(null);
-  recheckingGithub = signal(false);
-
   projects = signal<Project[]>([]);
   projectsLoading = signal(false);
+  refreshing = signal(false);
+  private refreshTimer?: ReturnType<typeof setTimeout>;
   projectsError = signal('');
   devs = signal<DevSummary[]>([]);
 
   /** `?as=` actif : lecture seule, pas de création au nom d'un autre. */
   viewingOther = computed(() => !!this.shown()?.viewed_as && this.shown()?.viewed_as !== this.self()?.uid);
-  githubStep = computed(() => this.shown()?.remaining.find(s => s.step === 'link_github') ?? null);
   /** Le superutilisateur sans `?as=` voit les projets de tout le lab. */
   showOwner = computed(() => !!this.self()?.is_superuser && !this.viewingOther());
 
@@ -104,26 +103,9 @@ export class MesProjetsComponent implements OnInit {
     this.profile.set(profile);
     this.loading.set(false);
     if (profile === 'admin_only' || profile === 'none') return;
-    if (!me.initialized) { this.init(); return; }
+    // Pas encore initialisé : l'accueil s'en charge (et le dit).
+    if (!me.initialized) return;
     this.ready();
-  }
-
-  /** Première connexion : tout ce qui ne demande pas le dev, fait par le moteur. */
-  init(): void {
-    if (this.initRunning()) return;
-    this.initRunning.set(true);
-    this.initError.set(null);
-    this.engine.meInit().subscribe({
-      next: me => {
-        this.initRunning.set(false);
-        this.initSteps.set(me.steps ?? []);
-        this.self.set(me);
-        this.shown.set(me);
-        this.profile.set(profileOf(me, this.kc.isAdmin));
-        if (me.initialized) this.ready();
-      },
-      error: err => { this.initRunning.set(false); this.initError.set(toEngineError(err)); },
-    });
   }
 
   private ready(): void {
@@ -155,13 +137,83 @@ export class MesProjetsComponent implements OnInit {
     });
   }
 
-  loadProjects(asUid: string | null = this.viewingOther() ? this.shown()?.viewed_as ?? null : null): void {
-    this.projectsLoading.set(true);
+  private currentAs(): string | null {
+    return this.viewingOther() ? this.shown()?.viewed_as ?? null : null;
+  }
+
+  /** `refresh` : demande au lab de relire GitHub ; la liste rendue est celle qu'il connaît déjà. */
+  loadProjects(asUid: string | null = this.currentAs(), refresh = false): void {
+    this.projectsLoading.set(!refresh);
+    this.refreshing.set(refresh);
     this.projectsError.set('');
-    this.engine.projects(asUid).subscribe({
-      next: r => { this.projects.set(r.projects ?? []); this.projectsLoading.set(false); },
-      error: err => { this.projects.set([]); this.projectsError.set(toEngineError(err).detail); this.projectsLoading.set(false); },
+    this.engine.projects(asUid, refresh).subscribe({
+      next: r => { this.projects.set(r.projects ?? []); this.projectsLoading.set(false); this.refreshing.set(false); },
+      error: err => {
+        if (!refresh) this.projects.set([]);
+        this.projectsError.set(toEngineError(err).detail);
+        this.projectsLoading.set(false); this.refreshing.set(false);
+      },
     });
+  }
+
+  /** Relit GitHub, puis relit la liste quelques secondes après (le lab rafraîchit en arrière-plan). */
+  refresh(): void {
+    if (this.refreshing()) return;
+    this.loadProjects(this.currentAs(), true);
+    clearTimeout(this.refreshTimer);
+    this.refreshTimer = setTimeout(() => this.loadProjects(this.currentAs(), false), 4000);
+  }
+
+  // ── Affichage d'une ligne ──────────────────────────────────────────────────
+
+  readonly gap = githubGapLabel;
+
+  /** Filtre de confort : utile au superutilisateur, qui a une vingtaine de lignes. */
+  filter = signal('');
+  visible = computed(() => {
+    const q = this.filter().trim().toLowerCase();
+    const list = this.projects();
+    return q ? list.filter(p => p.name.toLowerCase().includes(q) || p.owner.toLowerCase().includes(q)) : list;
+  });
+
+  // ── VS Code depuis la liste ────────────────────────────────────────────────
+
+  wsBusy = signal('');
+  wsError = signal<{ app: string; error: EngineError } | null>(null);
+  wsNotice = signal<{ app: string; text: string } | null>(null);
+
+  /** Même ouverture sécurisée que sur la page du projet (voir core/tool-tab.ts). */
+  openWorkspace(p: Project): void {
+    if (this.wsBusy()) return;
+    this.wsBusy.set(p.name);
+    this.wsError.set(null);
+    this.wsNotice.set(null);
+    const tab = preopenTab("Ouverture de l'éditeur… (jusqu'à 30 secondes)");
+    this.engine.workspaceOpen(p.name).subscribe({
+      next: opened => {
+        this.wsBusy.set('');
+        if (!isWorkspaceUrl(opened.url, window.location.origin)) {
+          tab?.close();
+          this.wsNotice.set({ app: p.name, text: "Adresse d'éditeur inattendue : elle n'a pas été ouverte." });
+          return;
+        }
+        this.projects.update(list => list.map(x => ({ ...x, workspace: { open: x.name === p.name && x.owner === p.owner } })));
+        if (!sendTab(tab, opened.url)) {
+          this.wsNotice.set({ app: p.name, text: 'Le navigateur a bloqué le nouvel onglet : autorisez les fenêtres surgissantes pour ce site, puis recommencez.' });
+        }
+      },
+      error: err => { this.wsBusy.set(''); tab?.close(); this.wsError.set({ app: p.name, error: toEngineError(err) }); },
+    });
+  }
+
+  /** Messages en clair pour les refus attendus ; sinon la phrase du lab. */
+  wsMessage(e: EngineError): string {
+    switch (e.code) {
+      case 'github_not_linked': return "Reliez d'abord votre compte GitHub : l'éditeur en a besoin pour pousser votre code.";
+      case 'workspace_limit':
+        return `Trop d'éditeurs sont ouverts sur le lab en ce moment${e.max !== null ? ` (${e.open}/${e.max})` : ''}. Ils se ferment seuls après 30 minutes sans activité : réessayez un peu plus tard.`;
+      default: return e.detail;
+    }
   }
 
   selectDev(uid: string): void {
@@ -169,15 +221,6 @@ export class MesProjetsComponent implements OnInit {
       relativeTo: this.route,
       queryParams: { as: uid && uid !== this.self()?.uid ? uid : null },
       queryParamsHandling: 'merge',
-    });
-  }
-
-  /** Après le passage dans oauth-hub : relire l'état de la liaison. */
-  recheckGithub(): void {
-    this.recheckingGithub.set(true);
-    this.engine.me().subscribe({
-      next: me => { this.self.set(me); if (!this.viewingOther()) this.shown.set(me); this.recheckingGithub.set(false); },
-      error: () => this.recheckingGithub.set(false),
     });
   }
 
@@ -244,6 +287,8 @@ export class MesProjetsComponent implements OnInit {
     this.createdApp.set('');
     this.createError.set(null);
   }
+
+  toneClass(tone: string): string { return tone ? `pj-${tone}` : ''; }
 
   stateClass(p: Project): string {
     return p.state === 'running' ? 'pj-ok' : p.state === 'partial' || p.state === 'unknown' ? 'pj-warn'

@@ -2,11 +2,25 @@ import { Routes } from '@angular/router';
 import { adminGuard, labGuard } from './core/auth.guard';
 
 export const routes: Routes = [
+  // ── Les trois pages de tout le monde (admins et developers) ─────────────────
   {
     path: '',
+    pathMatch: 'full',
     loadComponent: () =>
-      import('./pages/dashboard/dashboard.component').then(m => m.DashboardComponent),
-    // Seule route ouverte aux développeurs non-admins.
+      import('./pages/accueil/accueil.component').then(m => m.AccueilComponent),
+    canActivate: [labGuard],
+  },
+  {
+    path: 'services',
+    loadComponent: () =>
+      import('./pages/services/services.component').then(m => m.ServicesComponent),
+    canActivate: [labGuard],
+  },
+  {
+    path: 'projets',
+    pathMatch: 'full',
+    loadComponent: () =>
+      import('./pages/projets/mes-projets.component').then(m => m.MesProjetsComponent),
     canActivate: [labGuard],
   },
   {
@@ -16,6 +30,14 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./pages/projets/projet.component').then(m => m.ProjetComponent),
     canActivate: [labGuard],
+  },
+  // ── Administration : tout ce qui suit est réservé au groupe `admins` ────────
+  {
+    // L'ancien accueil d'administration (App Builder, applications conçues).
+    path: 'conception',
+    loadComponent: () =>
+      import('./pages/dashboard/dashboard.component').then(m => m.DashboardComponent),
+    canActivate: [adminGuard],
   },
   {
     path: 'code',

@@ -1,10 +1,6 @@
 <div class="dashboard">
 
-  <!-- « Mes projets » : l'accueil des développeurs (contrat multi-dev I6). Le
-       composant ne rend rien pour un admin qui n'est pas développeur. -->
-  <app-mes-projets />
-
-  <!-- Accueil d'administration : réservé au groupe `admins`. -->
+  <!-- Page d'administration « Conception » (route /conception, adminGuard). -->
   @if (kc.isAdmin) {
     <div class="hero">
       <h1 class="hero-title">Dev Lab</h1>

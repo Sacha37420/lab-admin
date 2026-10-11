@@ -2,7 +2,6 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { KeycloakService } from '../../core/keycloak.service';
-import { MesProjetsComponent } from '../projets/mes-projets.component';
 
 interface AppSpec {
   id: number;
@@ -21,7 +20,7 @@ function env() { return (window as unknown as EnvWindow).__env ?? {}; }
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [RouterLink, MesProjetsComponent],
+  imports: [RouterLink],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })

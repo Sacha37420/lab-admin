@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { EngineClient, EngineRequest } from './engine.client';
 
 interface EnvWindow {
-  __env?: { engineUrl?: string; storageUrl?: string };
+  __env?: { engineUrl?: string; storageUrl?: string; oauthHubUrl?: string };
 }
 
 /**
@@ -25,5 +25,10 @@ export class EngineService extends EngineClient {
   /** Interface de `storage` (fichiers de l'utilisateur) — même origine, chemin Caddy `/storage/`. */
   get storageUrl(): string {
     return (window as unknown as EnvWindow).__env?.storageUrl ?? `${window.location.origin}/storage/`;
+  }
+
+  /** Interface d'`oauth-hub` — repli quand le moteur n'a pas répondu (`me.oauth_hub_url` fait foi). */
+  get oauthHubUrl(): string {
+    return (window as unknown as EnvWindow).__env?.oauthHubUrl ?? `${window.location.origin}/oauth-hub/`;
   }
 }

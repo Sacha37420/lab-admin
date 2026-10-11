@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { Observable, firstValueFrom, lastValueFrom, of, throwError, toArray } from 'rxjs';
 import {
   EngineClient, EngineRequest, Job, Me, deployVerdicts, profileOf, repoPage, testCases,
-  toEngineError, ENV_KEY_RE, APP_NAME_RE, isPgadminUrl, isWorkspaceUrl, stateLabel, verdictLabel,
+  toEngineError, githubGapLabel, projectCounts, Project, ENV_KEY_RE, APP_NAME_RE, isPgadminUrl, isWorkspaceUrl, stateLabel, verdictLabel,
 } from './engine.client';
 
 function recorder(reply: (req: EngineRequest) => Observable<unknown> = () => of({})) {
@@ -50,6 +50,8 @@ test('chaque route : méthode, chemin, corps, paramètres', async () => {
   assert.deepEqual(await run(client.devs()), { method: 'GET', path: '/devs' });
   assert.deepEqual(await run(client.projects()), { method: 'GET', path: '/projects' });
   assert.deepEqual(await run(client.projects('alice')), { method: 'GET', path: '/projects', params: { as: 'alice' } });
+  assert.deepEqual(await run(client.projects(null, true)), { method: 'GET', path: '/projects', params: { refresh: '1' } });
+  assert.deepEqual(await run(client.projects('alice', true)), { method: 'GET', path: '/projects', params: { as: 'alice', refresh: '1' } });
   assert.deepEqual(await run(client.checkName('mon-app')),
     { method: 'POST', path: '/projects/check-name', body: { name: 'mon-app' } });
   const np = { name: 'mon-app', type: 'django-angular' as const, visibility: 'private' as const, required_groups: ['developers'] };
@@ -234,4 +236,29 @@ test('aides de saisie', () => {
   assert.equal(verdictLabel('non-lancé'), 'non lancés');
   assert.ok(ENV_KEY_RE.test('MA_CLE_API') && !ENV_KEY_RE.test('ma_cle') && !ENV_KEY_RE.test('A/B'));
   assert.ok(APP_NAME_RE.test('mon-app') && !APP_NAME_RE.test('Mon-App') && !APP_NAME_RE.test('a'));
+});
+
+test('écart avec GitHub (I5 v8) : les six statuts, et l\'absence du champ', () => {
+  const g = (status: string, behind: number | null = null) =>
+    githubGapLabel({ status, head: 'abc', behind, checked_at: '2026-10-11T08:00:00Z' } as never);
+  assert.deepEqual(g('up_to_date', 0), { label: 'à jour', tone: 'ok' });
+  assert.deepEqual(g('behind', 1), { label: '1 commit en retard', tone: 'warn' });
+  assert.deepEqual(g('behind', 2), { label: '2 commits en retard', tone: 'warn' });
+  assert.deepEqual(g('behind', null), { label: 'en retard sur GitHub', tone: 'warn' });
+  assert.deepEqual(g('not_deployed'), { label: 'rien en service', tone: '' });
+  assert.deepEqual(g('unknown'), { label: 'version inconnue', tone: '' });
+  assert.deepEqual(g('unreachable'), { label: 'dépôt injoignable', tone: 'ko' });
+  assert.deepEqual(g('no_repo'), { label: 'pas de dépôt GitHub', tone: '' });
+  // Moteur en service qui ne rend pas encore le champ, ou statut futur : « — », jamais une erreur.
+  for (const absent of [undefined, null, {} as never, { status: 'statut-futur' } as never, { status: 7 } as never]) {
+    assert.deepEqual(githubGapLabel(absent), { label: '—', tone: '' });
+  }
+});
+
+test('chiffres de l\'accueil', () => {
+  const p = (state: string, github?: unknown) => ({ name: 'x', state, github }) as unknown as Project;
+  assert.deepEqual(projectCounts([]), { total: 0, running: 0, behind: null });
+  assert.deepEqual(projectCounts([p('running'), p('stopped')]), { total: 2, running: 1, behind: null });
+  assert.deepEqual(projectCounts([p('running', { status: 'behind', behind: 2 }), p('running', { status: 'up_to_date' }),
+    p('never_deployed', { status: 'not_deployed' })]), { total: 3, running: 2, behind: 1 });
 });

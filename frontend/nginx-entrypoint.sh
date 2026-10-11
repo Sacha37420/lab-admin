@@ -15,6 +15,7 @@ window.__env = {
   appUrl:           "https://${DOMAIN}/lab-admin/",
   engineUrl:        "https://${DOMAIN}/mcp/api",
   storageUrl:       "https://${DOMAIN}/storage/",
+  oauthHubUrl:      "https://${DOMAIN}/oauth-hub/",
   appBuilderUrl:    "https://${DOMAIN}/app-builder",
   codeServerUrl:    "https://${DOMAIN}/code"
 };
@@ -29,6 +30,7 @@ window.__env = {
   appUrl:           window.location.protocol + '//' + window.location.hostname + ':${PORT_FRONTEND:-4200}',
   engineUrl:        window.location.origin + '/mcp/api',
   storageUrl:       window.location.protocol + '//' + window.location.hostname + ':4211/',
+  oauthHubUrl:      window.location.protocol + '//' + window.location.hostname + ':4215/',
   appBuilderUrl:    window.location.protocol + '//' + window.location.hostname + ':4205',
   codeServerUrl:    ''
 };

@@ -1,0 +1,125 @@
+<div class="page">
+  <div class="page-header">
+    <h1>Bienvenue sur le lab</h1>
+    <p>
+      Le lab est un serveur où vous créez vos applications web et les mettez en ligne, sans rien
+      installer chez vous. Chaque application a son adresse, sa base de données et son dépôt GitHub.
+    </p>
+  </div>
+
+  <section class="pj">
+    <div class="pj-grid">
+      <div class="pj-card">
+        <h2>Créer</h2>
+        <p class="pj-hint">Vous donnez un nom : le lab prépare le dépôt GitHub, la base de données et l'adresse de l'application.</p>
+      </div>
+      <div class="pj-card">
+        <h2>Coder</h2>
+        <p class="pj-hint">Un VS Code s'ouvre dans votre navigateur, sur votre projet seulement, avec un terminal et vos assistants.</p>
+      </div>
+      <div class="pj-card">
+        <h2>Mettre en ligne</h2>
+        <p class="pj-hint">Vous poussez votre code sur GitHub, puis un bouton le met en service. Vos applications ne voient que vos données.</p>
+      </div>
+    </div>
+
+    @if (loading()) {
+      <div class="pj-state">Chargement de votre situation…</div>
+    } @else if (engineDown(); as e) {
+      <div class="pj-state pj-error" role="alert">
+        Impossible de lire votre situation pour l'instant : {{ e.detail }}
+      </div>
+    } @else if (isDev()) {
+
+      <!-- ── Première connexion ───────────────────────────────────────────── -->
+      @if (!me()?.initialized) {
+        <div class="pj-card" aria-live="polite">
+          <h2>Préparation de votre espace</h2>
+          @if (initRunning()) {
+            <p class="pj-hint">Création de votre base de données et de votre dossier de travail… quelques secondes, rien à faire.</p>
+          } @else if (initError(); as e) {
+            <p class="pj-error" role="alert">{{ e.detail }}</p>
+            @if (e.code !== 'forbidden') {
+              <div><button type="button" class="btn-primary" (click)="init()">Réessayer</button></div>
+            }
+          }
+        </div>
+      } @else if (initSteps().length) {
+        <div class="pj-card" aria-live="polite">
+          <h2>Votre espace est prêt</h2>
+          <ul class="pj-steps">
+            @for (s of initSteps(); track s.name) { <li>{{ s.done ? '✓' : '✗' }} {{ s.detail }}</li> }
+          </ul>
+        </div>
+      }
+
+      <!-- ── Vos chiffres ─────────────────────────────────────────────────── -->
+      @if (counts(); as c) {
+        <div class="pj-figures" aria-label="Vos projets en chiffres">
+          <a routerLink="/projets" class="pj-figure"><strong>{{ c.total }}</strong><span>projet{{ c.total > 1 ? 's' : '' }}</span></a>
+          <a routerLink="/projets" class="pj-figure"><strong>{{ c.running }}</strong><span>en service</span></a>
+          <a routerLink="/projets" class="pj-figure"><strong>{{ c.behind ?? '—' }}</strong><span>en retard sur GitHub</span></a>
+        </div>
+      }
+
+      <!-- ── Le parcours ──────────────────────────────────────────────────── -->
+      <div class="pj-card">
+        <h2>Votre parcours</h2>
+        <ol class="pj-path">
+          @for (step of steps(); track step.title; let i = $index) {
+            <li [class.pj-done]="step.state === 'done'" [class.pj-now]="step.state === 'now'">
+              <span class="pj-path-mark" aria-hidden="true">{{ stepMark(step.state) }}</span>
+              <div class="pj-item-main">
+                <span class="pj-item-name">{{ i + 1 }}. {{ step.title }}
+                  @if (stepLabel(step.state)) { <span class="pj-badge" [class.pj-ok]="step.state === 'done'" [class.pj-warn]="step.state === 'now'">{{ stepLabel(step.state) }}</span> }
+                </span>
+                <span class="pj-hint">{{ step.text }}</span>
+                @if (step.state !== 'done' && me()?.initialized) {
+                  <div class="pj-row">
+                    @if (step.href) {
+                      <a class="btn-primary" [href]="step.href" target="_blank" rel="noopener">{{ step.action }} ↗</a>
+                      <button type="button" class="btn-secondary" (click)="recheckGithub()" [disabled]="recheckingGithub()">
+                        {{ recheckingGithub() ? 'Vérification…' : "C'est fait — vérifier" }}
+                      </button>
+                    } @else if (step.link && step.action) {
+                      <a class="btn-secondary" [routerLink]="step.link">{{ step.action }}</a>
+                    }
+                  </div>
+                }
+              </div>
+            </li>
+          }
+        </ol>
+      </div>
+    } @else if (profile() === 'none') {
+      <div class="pj-card">
+        <h2>Bonjour {{ me()?.username }}</h2>
+        @if (me()?.ineligible_reason === 'invalid_uid') {
+          <p class="pj-hint">Votre identifiant ne peut pas servir de compte développeur (lettres minuscules et chiffres uniquement). Vous pouvez consulter les services, pas créer de projet.</p>
+        } @else {
+          <p class="pj-hint">Votre compte n'est pas encore développeur sur le lab. Demandez à l'administrateur de vous ajouter au groupe <code>developers</code>.</p>
+        }
+      </div>
+    } @else {
+      <!-- admin qui n'est pas développeur -->
+      <div class="pj-card">
+        <h2>Bonjour {{ me()?.username }}</h2>
+        <p class="pj-hint">Votre compte administre le lab sans y développer : pas de parcours ni de projets à votre nom. Les pages d'administration sont dans le menu.</p>
+      </div>
+    }
+
+    <!-- ── Les règles ─────────────────────────────────────────────────────── -->
+    <div class="pj-card">
+      <h2>Trois règles, pour vous comme pour vos assistants</h2>
+      <ul class="pj-rules">
+        <li><strong>Une feuille de route.</strong> Chaque projet a un fichier <code>FEUILLE_DE_ROUTE.md</code> : le travail y est découpé en lots, avec les tests à réussir pour chacun.</li>
+        <li><strong>Des tests avant la mise en ligne.</strong> Si les tests échouent, rien n'est mis en service : la version précédente continue de tourner.</li>
+        <li><strong>La mise en ligne passe par le lab.</strong> Depuis la page du projet ou depuis votre assistant — jamais à la main sur le serveur.</li>
+      </ul>
+      <div class="pj-row">
+        <a class="btn-secondary" routerLink="/services">Voir les services</a>
+        <a class="btn-secondary" routerLink="/projets">Voir les projets</a>
+      </div>
+    </div>
+  </section>
+</div>
