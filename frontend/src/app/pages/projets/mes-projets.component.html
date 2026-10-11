@@ -153,44 +153,55 @@
       } @else {
         @if (projectsError()) { <p class="pj-error" role="alert">{{ projectsError() }}</p> }
         @if (visible().length === 0) { <div class="pj-state">Aucun projet ne correspond à « {{ filter() }} ».</div> }
-        <ul class="pj-list pj-projects">
-          @for (p of visible(); track p.owner + '/' + p.name) {
-            <li>
-              <div class="pj-item-main">
-                <span class="pj-item-name">
-                  <a [routerLink]="['/projets', p.name]">{{ p.name }}</a>
-                  @if (showOwner()) { <span class="pj-hint"> · {{ p.owner }}</span> }
-                </span>
-                <span class="pj-meta">
-                  <span [class]="'pj-badge ' + stateClass(p)">{{ stateLabel(p.state) }}</span>
-                  @if (p.deployed; as d) {
-                    <span>version <code>{{ d.sha.slice(0, 7) }}</code> du {{ d.at | date:'dd/MM/yyyy HH:mm' }}</span>
-                  } @else {
-                    <span>jamais déployé</span>
+        @for (section of sections(); track section.key) {
+          <div class="pj-section" [attr.data-kind]="section.key">
+            @if (section.title) {
+              <h2 class="pj-section-title">{{ section.title }} <span class="pj-hint">({{ section.projects.length }})</span></h2>
+            }
+          <ul class="pj-list pj-projects">
+            @for (p of section.projects; track p.owner + '/' + p.name) {
+              <li>
+                <div class="pj-item-main">
+                  <span class="pj-item-name">
+                    <a [routerLink]="['/projets', p.name]">{{ p.name }}</a>
+                    @if (showOwner()) { <span class="pj-hint"> · {{ p.owner }}</span> }
+                  </span>
+                  <span class="pj-meta">
+                    <span [class]="'pj-badge ' + stateClass(p)">{{ stateLabel(p.state) }}</span>
+                    @if (p.deployed; as d) {
+                      <span>version <code>{{ d.sha.slice(0, 7) }}</code> du {{ d.at | date:'dd/MM/yyyy HH:mm' }}</span>
+                    } @else {
+                      <span>jamais déployé</span>
+                    }
+                    <span class="pj-gap">GitHub :
+                      <span [class]="'pj-badge ' + toneClass(gap(p.github).tone)"
+                            [title]="p.github?.checked_at ? 'vérifié le ' + (p.github?.checked_at | date:'dd/MM/yyyy HH:mm') : ''">{{ gap(p.github).label }}</span>
+                    </span>
+                    @if (p.workspace.open) { <span class="pj-badge">éditeur ouvert</span> }
+                  </span>
+                  @if (wsError()?.app === p.name) {
+                    <span class="pj-error" role="alert">{{ wsMessage(wsError()!.error) }}
+                      @if (wsError()?.error?.connectUrl; as u) { <a [href]="u" target="_blank" rel="noopener">Relier mon compte GitHub ↗</a> }
+                    </span>
                   }
-                  <span class="pj-gap">GitHub :
-                    <span [class]="'pj-badge ' + toneClass(gap(p.github).tone)"
-                          [title]="p.github?.checked_at ? 'vérifié le ' + (p.github?.checked_at | date:'dd/MM/yyyy HH:mm') : ''">{{ gap(p.github).label }}</span>
-                  </span>
-                  @if (p.workspace.open) { <span class="pj-badge">éditeur ouvert</span> }
-                </span>
-                @if (wsError()?.app === p.name) {
-                  <span class="pj-error" role="alert">{{ wsMessage(wsError()!.error) }}
-                    @if (wsError()?.error?.connectUrl; as u) { <a [href]="u" target="_blank" rel="noopener">Relier mon compte GitHub ↗</a> }
-                  </span>
-                }
-                @if (wsNotice()?.app === p.name) { <span class="pj-hint" role="status">{{ wsNotice()?.text }}</span> }
-              </div>
-              <div class="pj-row pj-actions">
-                @if (p.urls.app; as u) { <a class="btn-secondary" [href]="u" target="_blank" rel="noopener">App ↗</a> }
-                <button type="button" class="btn-secondary" (click)="openWorkspace(p)" [disabled]="!!wsBusy()"
-                        [attr.aria-label]="'Ouvrir ' + p.name + ' dans VS Code'">{{ wsBusy() === p.name ? 'Démarrage…' : 'VS Code' }}</button>
-                <a class="btn-primary" [routerLink]="['/projets', p.name]" [attr.aria-label]="'Détail de ' + p.name">Détail</a>
-              </div>
-            </li>
-          }
-        </ul>
+                  @if (wsNotice()?.app === p.name) { <span class="pj-hint" role="status">{{ wsNotice()?.text }}</span> }
+                </div>
+                <div class="pj-row pj-actions">
+                  @if (p.urls.app; as u) { <a class="btn-secondary" [href]="u" target="_blank" rel="noopener">App ↗</a> }
+                  <button type="button" class="btn-secondary" (click)="openWorkspace(p)" [disabled]="!!wsBusy()"
+                          [attr.aria-label]="'Ouvrir ' + p.name + ' dans VS Code'">{{ wsBusy() === p.name ? 'Démarrage…' : 'VS Code' }}</button>
+                  <a class="btn-primary" [routerLink]="['/projets', p.name]" [attr.aria-label]="'Détail de ' + p.name">Détail</a>
+                </div>
+              </li>
+            }
+          </ul>
+          </div>
+        }
       }
     </section>
   }
+
+  <!-- Conception (ancienne page /conception) : réservée au groupe `admins`. Après la liste,
+       pour que les projets restent ce qu'on voit d'abord. -->
+  @if (kc.isAdmin) { <app-dashboard /> }
 </div>

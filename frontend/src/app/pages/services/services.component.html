@@ -1,91 +1,119 @@
+<!-- Graphisme de l'ancienne page « Outils » : .page-header, .env-card + .env-card-header,
+     .services-grid de .service-card (.svc-name / .svc-desc / .svc-url « Ouvrir ↗ »). -->
 <div class="page">
   <div class="page-header">
     <h1>Services</h1>
-    <p>Les outils communs du lab, et ce à quoi chacun sert.</p>
+    <p>Les services du lab, et ce à quoi chacun sert.</p>
   </div>
 
-  <section class="pj">
+  <div class="env-sections">
 
-    <!-- ── Compte ─────────────────────────────────────────────────────────── -->
-    <div class="pj-card">
-      <h2>Keycloak — votre compte</h2>
-      <p class="pj-hint">Un seul compte pour tout le lab. C'est ici que vous changez votre mot de passe et voyez vos sessions ouvertes.</p>
-      <div class="pj-row">
-        @if (kc.accountUrl) { <a class="btn-primary" [href]="kc.accountUrl" target="_blank" rel="noopener">Mon compte ↗</a> }
-        @if (tool('Keycloak'); as t) { <a class="btn-secondary" [href]="t.url" target="_blank" rel="noopener">Console d'administration ↗</a> }
+    <!-- ── Pour tout le monde ─────────────────────────────────────────────── -->
+    <div class="env-card">
+      <div class="env-card-header">
+        <h2>Services communs</h2>
+        <span class="env-path">ouverts à votre compte</span>
       </div>
-    </div>
-
-    <!-- ── Base de données ────────────────────────────────────────────────── -->
-    @if (isDev()) {
-      <div>
-        <p class="pj-hint pj-lead"><strong>pgAdmin — votre base de données.</strong> Toutes vos applications rangent leurs données dans votre base, chacune dans son tiroir. pgAdmin permet de les consulter et de les corriger ; il ne voit que votre base.</p>
-        <app-ma-base [database]="me()?.database ?? null" [actions]="true" [pgadminOpen]="me()?.pgadmin?.open" />
-      </div>
-    }
-    @if (tool('pgAdmin'); as t) {
-      <div class="pj-card">
-        <h2>pgAdmin du lab</h2>
-        <p class="pj-hint">Réservé aux administrateurs : toutes les bases du lab. Joignable depuis le réseau local seulement.</p>
-        <div class="pj-row"><a class="btn-secondary" [href]="t.url" target="_blank" rel="noopener">Ouvrir ↗</a></div>
-      </div>
-    }
-
-    <!-- ── Fichiers ───────────────────────────────────────────────────────── -->
-    <div class="pj-card">
-      <h2>Storage — les fichiers</h2>
-      <p class="pj-hint">L'espace de fichiers du lab : les vôtres, et ceux que vos applications y déposent (photos, documents, exports). Vous pouvez y créer des dossiers partagés.</p>
-      <div class="pj-row"><a class="btn-primary" [href]="engine.storageUrl" target="_blank" rel="noopener">Ouvrir Storage ↗</a></div>
-    </div>
-
-    <!-- ── GitHub ─────────────────────────────────────────────────────────── -->
-    <div class="pj-card">
-      <h2>OAuth Hub — vos comptes extérieurs</h2>
-      <p class="pj-hint">C'est ici que vous reliez votre compte GitHub au lab. Sans lui, pas de création de projet : le dépôt est créé à votre nom.</p>
-      @if (me(); as m) {
-        @if (m.eligible) {
-          <p>
-            @if (m.github_linked === true) {
-              <span class="pj-badge pj-ok">GitHub relié{{ m.github?.account ? ' — ' + m.github?.account : '' }}</span>
-            } @else if (m.github_linked === false) {
-              <span class="pj-badge pj-warn">GitHub non relié</span>
-            } @else {
-              <span class="pj-badge">état de la liaison GitHub inconnu</span>
-            }
-          </p>
+      <div class="services-grid">
+        @if (kc.accountUrl) {
+          <div class="service-card">
+            <div class="svc-name">Keycloak — mon compte</div>
+            <div class="svc-desc">Un seul compte pour tout le lab : mot de passe, sessions ouvertes.</div>
+            <div class="svc-url"><a class="svc-link" [href]="kc.accountUrl" target="_blank" rel="noopener">Ouvrir ↗</a></div>
+          </div>
         }
-      }
-      <div class="pj-row"><a class="btn-primary" [href]="oauthHubUrl()" target="_blank" rel="noopener">Ouvrir OAuth Hub ↗</a></div>
+        <div class="service-card">
+          <div class="svc-name">Storage</div>
+          <div class="svc-desc">Les fichiers : les vôtres, et ceux que vos applications y déposent.</div>
+          <div class="svc-url"><a class="svc-link" [href]="engine.storageUrl" target="_blank" rel="noopener">Ouvrir ↗</a></div>
+        </div>
+        <div class="service-card">
+          <div class="svc-name">
+            OAuth Hub
+            @if (me(); as m) {
+              @if (m.eligible) {
+                <span class="svc-tag">{{ m.github_linked === true ? 'GitHub relié' + (m.github?.account ? ' — ' + m.github?.account : '') : m.github_linked === false ? 'GitHub non relié' : 'liaison GitHub inconnue' }}</span>
+              }
+            }
+          </div>
+          <div class="svc-desc">Relie votre compte GitHub au lab — nécessaire pour créer un projet.</div>
+          <div class="svc-url"><a class="svc-link" [href]="oauthHubUrl()" target="_blank" rel="noopener">Ouvrir ↗</a></div>
+        </div>
+      </div>
     </div>
 
-    <!-- ── Assistants ─────────────────────────────────────────────────────── -->
-    @if (isDev() && me()?.mcp_url) {
-      <div class="pj-card">
-        <h2>Le lab pour vos assistants (MCP)</h2>
-        <p class="pj-hint">
-          Une porte d'entrée pour Claude Code ou Mistral Vibe : ils peuvent créer un projet, le déployer, lire ses journaux et lancer ses tests à votre place.
-          Dans l'éditeur du lab, c'est déjà réglé. Sur votre ordinateur, ajoutez-la une fois :
-        </p>
-        <dl class="pj-dl"><dt>Adresse</dt><dd><code>{{ me()?.mcp_url }}</code></dd></dl>
-        <pre class="pj-pre">{{ mcpCommand() }}</pre>
-        <div class="pj-row"><button type="button" class="btn-secondary" (click)="copyCommand()">{{ copied() ? 'Copié ✓' : 'Copier la commande' }}</button></div>
+    <!-- ── Développeur : sa base, son pgAdmin ─────────────────────────────── -->
+    @if (isDev()) {
+      <div class="env-card">
+        <div class="env-card-header">
+          <h2>Ma base et pgAdmin</h2>
+          <span class="env-path">{{ me()?.database?.name }}</span>
+        </div>
+        <div class="services-grid svc-intro">
+          <div class="service-card">
+            <div class="svc-name">Base de données</div>
+            <div class="svc-desc">Toutes vos applications y rangent leurs données, chacune dans son schéma.</div>
+          </div>
+          <div class="service-card">
+            <div class="svc-name">pgAdmin personnel</div>
+            <div class="svc-desc">Pour consulter et corriger vos données. Il ne voit que votre base.</div>
+          </div>
+        </div>
+        <app-ma-base [bare]="true" [database]="me()?.database ?? null" [actions]="true" [pgadminOpen]="me()?.pgadmin?.open" />
       </div>
+
+      <!-- ── Développeur : ses comptes d'envoi d'email ─────────────────────── -->
+      <div class="env-card">
+        <div class="env-card-header">
+          <h2>Email</h2>
+          <span class="env-path">vos comptes d'envoi</span>
+        </div>
+        <app-email-profils [bare]="true" />
+      </div>
+
+      <!-- ── Développeur : le lab pour ses assistants ──────────────────────── -->
+      @if (me()?.mcp_url) {
+        <div class="env-card">
+          <div class="env-card-header">
+            <h2>Assistants (MCP)</h2>
+            <span class="env-path">{{ me()?.mcp_url }}</span>
+          </div>
+          <div class="services-grid svc-wide">
+            <div class="service-card">
+              <div class="svc-name">Le lab pour Claude Code et Mistral Vibe</div>
+              <div class="svc-desc">Ils peuvent créer un projet, le déployer, lire ses journaux et lancer ses tests à votre place. Dans l'éditeur du lab, c'est déjà réglé ; sur votre ordinateur, lancez une fois :</div>
+              <div class="svc-url svc-command">{{ mcpCommand() }}</div>
+              <div class="svc-url"><button type="button" class="svc-link" (click)="copyCommand()">{{ copied() ? 'Copié ✓' : 'Copier la commande' }}</button></div>
+            </div>
+          </div>
+        </div>
+      }
     }
 
-    <!-- ── Administration ─────────────────────────────────────────────────── -->
-    @if (tool('phpLDAPadmin'); as t) {
-      <div class="pj-card">
-        <h2>Annuaire</h2>
-        <p class="pj-hint">Réservé aux administrateurs : les comptes et les groupes du lab. Joignable depuis le réseau local seulement.</p>
-        <div class="pj-row"><a class="btn-secondary" [href]="t.url" target="_blank" rel="noopener">Ouvrir phpLDAPadmin ↗</a></div>
+    <!-- ── Administration : l'ancienne page « Outils », entrée pour entrée ── -->
+    @if (kc.isAdmin && (tools().length || codeUrl)) {
+      <div class="env-card">
+        <div class="env-card-header">
+          <h2>Interfaces d'administration</h2>
+          <span class="env-path">accès réservé aux membres du groupe admins</span>
+        </div>
+        <div class="services-grid">
+          @for (tool of tools(); track tool.name) {
+            <div class="service-card">
+              <div class="svc-name">{{ tool.name }}</div>
+              <div class="svc-desc">{{ tool.description }}</div>
+              <div class="svc-url"><a class="svc-link" [href]="tool.url" target="_blank" rel="noopener">Ouvrir ↗</a></div>
+            </div>
+          }
+          @if (codeUrl) {
+            <div class="service-card">
+              <div class="svc-name">Éditeur du lab</div>
+              <div class="svc-desc">Le code du lab lui-même, pas celui d'un projet.</div>
+              <div class="svc-url"><a class="svc-link" [href]="codeUrl" target="_blank" rel="noopener">Ouvrir ↗</a></div>
+            </div>
+          }
+        </div>
       </div>
     }
-    @if (kc.isAdmin && codeUrl) {
-      <div class="pj-card">
-        <h2>Éditeur du lab</h2>
-        <p class="pj-hint">Réservé aux administrateurs : le code du lab lui-même, pas celui d'un projet.</p>
-        <div class="pj-row"><a class="btn-secondary" [href]="codeUrl" target="_blank" rel="noopener">Ouvrir l'éditeur ↗</a></div>
-      </div>
-    }
-  </section>
+  </div>
 </div>

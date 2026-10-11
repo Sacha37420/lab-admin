@@ -1,9 +1,9 @@
 <div class="dashboard">
 
-  <!-- Page d'administration « Conception » (route /conception, adminGuard). -->
+  <!-- Bloc « Conception », posé en bas de la page Projets pour les admins (v10). -->
   @if (kc.isAdmin) {
     <div class="hero">
-      <h1 class="hero-title">Dev Lab</h1>
+      <h2 class="hero-title">Conception — Dev Lab</h2>
       <p class="hero-sub">Concevez, scaffoldez et déployez vos applications depuis un seul endroit.</p>
       <div class="hero-actions">
         <a [href]="appBuilderUrl" target="_blank" class="btn-primary">

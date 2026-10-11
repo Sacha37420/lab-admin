@@ -1,4 +1,5 @@
-.dashboard { max-width: 960px; margin: 0 auto; padding: var(--space-6) var(--space-4); }
+/* Bloc inclus dans la page Projets (v10) : plus de largeur ni de marges propres. */
+.dashboard { margin-top: var(--space-7); padding-top: var(--space-5); border-top: 1px solid var(--border); }
 
 .hero {
   text-align: center;

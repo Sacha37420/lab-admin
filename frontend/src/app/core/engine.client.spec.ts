@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { Observable, firstValueFrom, lastValueFrom, of, throwError, toArray } from 'rxjs';
 import {
   EngineClient, EngineRequest, Job, Me, deployVerdicts, profileOf, repoPage, testCases,
-  toEngineError, githubGapLabel, projectCounts, Project, ENV_KEY_RE, APP_NAME_RE, isPgadminUrl, isWorkspaceUrl, stateLabel, verdictLabel,
+  toEngineError, projectSections, smtpIsStale, smtpBody, smtpProblems, SMTP_DEFAULT_PORT, githubGapLabel, projectCounts, Project, ENV_KEY_RE, APP_NAME_RE, isPgadminUrl, isWorkspaceUrl, stateLabel, verdictLabel,
 } from './engine.client';
 
 function recorder(reply: (req: EngineRequest) => Observable<unknown> = () => of({})) {
@@ -261,4 +261,82 @@ test('chiffres de l\'accueil', () => {
   assert.deepEqual(projectCounts([p('running'), p('stopped')]), { total: 2, running: 1, behind: null });
   assert.deepEqual(projectCounts([p('running', { status: 'behind', behind: 2 }), p('running', { status: 'up_to_date' }),
     p('never_deployed', { status: 'not_deployed' })]), { total: 3, running: 2, behind: 1 });
+});
+
+test('I10 : routes des profils SMTP', async () => {
+  const { client, calls } = recorder();
+  const run = async (o: Observable<unknown>) => { await firstValueFrom(o); return calls.pop(); };
+  assert.deepEqual(await run(client.smtpList()), { method: 'GET', path: '/me/smtp' });
+  assert.deepEqual(await run(client.smtpList('hassan')), { method: 'GET', path: '/me/smtp', params: { as: 'hassan' } });
+  const body = { label: 'Gmail', host: 'smtp.gmail.com', port: 587, security: 'starttls' as const, username: 'moi@exemple.fr', from_email: 'moi@exemple.fr', password: 'p w' };
+  assert.deepEqual(await run(client.smtpCreate(body)), { method: 'POST', path: '/me/smtp', body });
+  assert.deepEqual(await run(client.smtpUpdate('ab12', { label: 'x' })), { method: 'PUT', path: '/me/smtp/ab12', body: { label: 'x' } });
+  assert.deepEqual(await run(client.smtpDelete('ab12')), { method: 'DELETE', path: '/me/smtp/ab12' });
+  // L'essai : sans corps, sans paramètre — aucune adresse de destination ne peut être glissée.
+  assert.deepEqual(await run(client.smtpTest('ab12')), { method: 'POST', path: '/me/smtp/ab12/test' });
+  assert.deepEqual(await run(client.smtpTest('../../projects')), { method: 'POST', path: '/me/smtp/..%2F..%2Fprojects/test' });
+  assert.deepEqual(await run(client.projectSmtp('mon-app', 'ab12', 'now')),
+    { method: 'PUT', path: '/projects/mon-app/smtp', body: { profile: 'ab12', apply: 'now' } });
+  assert.deepEqual(await run(client.projectSmtp('mon-app', null, 'next_deploy')),
+    { method: 'PUT', path: '/projects/mon-app/smtp', body: { profile: null, apply: 'next_deploy' } });
+});
+
+test('I10 : le mot de passe ne part que s\'il est saisi ; « aucune sécurité » part sans identifiants', () => {
+  const form = { label: ' Gmail ', host: ' smtp.gmail.com ', port: 587, security: 'starttls' as const,
+                 username: ' moi@exemple.fr ', from_email: ' moi@exemple.fr ', password: '' };
+  const unchanged = smtpBody(form);
+  assert.equal('password' in unchanged, false);            // champ vide = clé absente = inchangé
+  assert.deepEqual(unchanged, { label: 'Gmail', host: 'smtp.gmail.com', port: 587, security: 'starttls', username: 'moi@exemple.fr', from_email: 'moi@exemple.fr' });
+  assert.equal(smtpBody({ ...form, password: '  espaces gardés  ' }).password, '  espaces gardés  ');
+  const none = smtpBody({ ...form, security: 'none', password: 'reste-du-formulaire' });
+  assert.deepEqual([none.username, none.password], ['', '']);
+  assert.deepEqual(SMTP_DEFAULT_PORT, { starttls: 587, ssl: 465, none: 25 });
+});
+
+test('I10 : contrôle de saisie et erreurs nommées', () => {
+  const ok = { label: 'x', host: 'smtp.exemple.fr', port: 587, security: 'starttls' as const, username: '', from_email: 'a@b.fr' };
+  assert.deepEqual(smtpProblems(ok), []);
+  assert.equal(smtpProblems({ ...ok, label: ' ', host: 'a b', port: 70000, from_email: 'pas-une-adresse' }).length, 4);
+  assert.equal(smtpProblems({ ...ok, port: 0 }).length, 1);
+  const used = toEngineError({ status: 409, error: { error: 'smtp_in_use', detail: 'Profil rattaché.', projects: ['mon-app', 'autre', 3] } });
+  assert.equal(used.code, 'smtp_in_use');
+  assert.deepEqual(used.projects, ['mon-app', 'autre']);
+  const failed = toEngineError({ status: 502, error: { error: 'smtp_error', detail: '535 5.7.8 Username and Password not accepted' } });
+  assert.equal(failed.code, 'smtp_error');                 // un 502 du moteur avec un corps JSON n'est pas « moteur absent »
+  assert.equal(failed.detail, '535 5.7.8 Username and Password not accepted');
+  assert.equal(toEngineError({ status: 429, error: { error: 'rate_limited', detail: 'Attendez 30 s.' } }).code, 'rate_limited');
+  // Moteur en service sans ces routes : 404 sans corps JSON → « pas encore disponible ».
+  assert.equal(toEngineError({ status: 404, error: '404 page not found' }).code, 'no_engine');
+  assert.deepEqual(toEngineError({ status: 404, error: '' }).projects, []);
+});
+
+test('I10 : profil modifié — le champ `stale` du moteur fait foi, la mémoire de session n\'est qu\'un repli', () => {
+  assert.equal(smtpIsStale({ profile: 'p1', label: 'x', stale: true }, false), true);
+  assert.equal(smtpIsStale({ profile: 'p1', label: 'x', stale: false }, true), false);   // le moteur dit non : on le croit
+  assert.equal(smtpIsStale({ profile: 'p1', label: 'x' }, true), true);                  // champ absent : repli
+  assert.equal(smtpIsStale({ profile: 'p1', label: 'x' }, false), false);
+  assert.equal(smtpIsStale({ profile: null, label: null, stale: true }, true), false);   // aucun profil rattaché : rien à signaler
+  assert.equal(smtpIsStale(undefined, true), false);
+  assert.equal(smtpIsStale(null, true), false);
+});
+
+test('I6 v10 : sections de la liste d\'après `kind`', () => {
+  const p = (name: string, kind?: string) => ({ name, kind }) as unknown as Project;
+  assert.deepEqual(projectSections([]), []);
+  // Moteur en service : aucun `kind` → une seule liste, sans intertitre.
+  const flat = projectSections([p('a'), p('b')]);
+  assert.equal(flat.length, 1);
+  assert.equal(flat[0].title, null);
+  assert.deepEqual(flat[0].projects.map(x => x.name), ['a', 'b']);
+  // Deux natures : applications d'abord, ordre du moteur conservé dans chaque section.
+  const two = projectSections([p('storage', 'outil'), p('test', 'application'), p('lab-admin', 'outil'), p('carto', 'application')]);
+  assert.deepEqual(two.map(s => [s.title, s.projects.map(x => x.name)]),
+    [['Applications déployées', ['test', 'carto']], ['Outils du lab', ['storage', 'lab-admin']]]);
+  // Section vide non rendue.
+  assert.deepEqual(projectSections([p('test', 'application')]).map(s => s.title), ['Applications déployées']);
+  assert.deepEqual(projectSections([p('storage', 'outil')]).map(s => s.title), ['Outils du lab']);
+  // Nature inconnue ou absente au milieu des autres : jamais perdue.
+  const odd = projectSections([p('test', 'application'), p('x', 'nature-future'), p('y')]);
+  assert.deepEqual(odd.map(s => [s.title, s.projects.length]), [['Applications déployées', 1], ['Autres', 2]]);
+  assert.equal(odd.reduce((n, s) => n + s.projects.length, 0), 3);
 });

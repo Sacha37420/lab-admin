@@ -22,7 +22,9 @@ export type EngineErrorCode =
   | 'queue_full' | 'workspace_limit' | 'sql_error' | 'sql_timeout' | 'upstream'
   | 'unavailable' | 'failed'
   // I9 (contrat v7)
-  | 'pg_trust_enabled' | 'pgadmin_limit';
+  | 'pg_trust_enabled' | 'pgadmin_limit'
+  // I10 (contrat v9)
+  | 'smtp_in_use' | 'smtp_error' | 'rate_limited';
 
 /**
  * Erreur normalisée. `code` vaut un `EngineErrorCode`, ou l'un des deux codes
@@ -45,6 +47,8 @@ export interface EngineError {
   sqlstate: string | null;
   /** `upstream`. */
   service: string | null;
+  /** `smtp_in_use` : les projets auxquels le profil est rattaché. */
+  projects: string[];
   /** `workspace_limit`. */
   open: number | null;
   max: number | null;
@@ -67,6 +71,7 @@ export function toEngineError(err: unknown): EngineError {
   const base = {
     status,
     reasons: Array.isArray(body['reasons']) ? body['reasons'].filter((r): r is string => typeof r === 'string') : [],
+    projects: Array.isArray(body['projects']) ? body['projects'].filter((r): r is string => typeof r === 'string') : [],
     connectUrl: str(body['connect_url']),
     jobId: str(body['job_id']),
     sqlstate: str(body['sqlstate']),
@@ -169,7 +174,12 @@ export interface GithubGap {
   checked_at: string | null;
 }
 
+/** Nature d'un projet (I5 v10) : app déployée (`deploiement/`) ou service du cadriciel (racine). */
+export type ProjectKind = 'application' | 'outil';
+
 export interface Project {
+  /** Absent tant que le moteur en service ne le rend pas : la liste reste alors d'un seul tenant. */
+  kind?: ProjectKind;
   /** Absent tant que le moteur en service ne le rend pas : à tolérer (« — »). */
   github?: GithubGap | null;
   name: string;
@@ -189,7 +199,26 @@ export interface ServiceState {
   image: string;
 }
 
+/**
+ * `smtp` du détail d'un projet (I10). `stale: true` = le profil a été modifié
+ * depuis sa dernière application à ce projet. Champ facultatif ici : un moteur
+ * qui ne le rend pas encore ne doit rien casser.
+ */
+export interface ProjectSmtp { profile: string | null; label: string | null; stale?: boolean; }
+
+/**
+ * Le profil rattaché est-il en retard sur sa définition ? Le moteur fait foi
+ * dès qu'il rend `stale` ; `remembered` (ce que cette session a appris d'un
+ * `stale_projects`) ne sert que de repli quand le champ est absent.
+ */
+export function smtpIsStale(smtp: ProjectSmtp | null | undefined, remembered: boolean): boolean {
+  if (!smtp?.profile) return false;
+  return typeof smtp.stale === 'boolean' ? smtp.stale : remembered;
+}
+
 export interface ProjectDetail extends Project {
+  /** I10 (v9). Absent tant que le moteur en service ne le rend pas. */
+  smtp?: ProjectSmtp | null;
   services: ServiceState[];
   database: DatabaseInfo;
   auto_deploy: { enabled: boolean; available: boolean };
@@ -259,6 +288,78 @@ export interface DatabasePassword {
 
 export interface PgadminServer { name: string; host: string; database: string; user: string; }
 export interface PgadminOpened { url: string; servers: PgadminServer[]; }
+
+// ── I10 (contrat v9) : profils SMTP du développeur ───────────────────────────
+
+export type SmtpSecurity = 'starttls' | 'ssl' | 'none';
+
+/** Un profil tel que le moteur le rend : JAMAIS de mot de passe, seulement `has_password`. */
+export interface SmtpProfile {
+  id: string;
+  label: string;
+  host: string;
+  port: number;
+  security: SmtpSecurity;
+  username: string;
+  from_email: string;
+  has_password: boolean;
+  projects: string[];
+  /** Réponse de `PUT /me/smtp/<id>` seulement : projets qui tournent encore avec l'ancienne version. */
+  stale_projects?: string[];
+}
+
+/**
+ * Corps de création / modification. `password` est EN ÉCRITURE SEULE : il part
+ * du formulaire vers le moteur et n'en revient jamais. En modification, la clé
+ * absente veut dire « inchangé ».
+ */
+export interface SmtpInput {
+  label: string;
+  host: string;
+  port: number;
+  security: SmtpSecurity;
+  username: string;
+  from_email: string;
+  password?: string;
+}
+
+export interface SmtpAttach { app: string; profile: string | null; applied: boolean; }
+
+/** Port habituel de chaque mode — sert à préremplir, jamais à imposer. */
+export const SMTP_DEFAULT_PORT: Record<SmtpSecurity, number> = { starttls: 587, ssl: 465, none: 25 };
+
+/**
+ * Corps envoyé au moteur à partir du formulaire.
+ *  - `security: "none"` : identifiant et mot de passe partent VIDES (le moteur
+ *    refuse des identifiants en clair sur le réseau) ;
+ *  - sinon, mot de passe vide = clé absente (création sans mot de passe, ou
+ *    modification « inchangé ») ;
+ *  - le mot de passe n'est ni rogné ni transformé.
+ */
+export function smtpBody(form: SmtpInput): SmtpInput {
+  const body: SmtpInput = {
+    label: form.label.trim(), host: form.host.trim(), port: Number(form.port),
+    security: form.security, username: form.username.trim(), from_email: form.from_email.trim(),
+  };
+  if (form.security === 'none') {
+    body.username = '';
+    body.password = '';
+  } else if (form.password) {
+    body.password = form.password;
+  }
+  return body;
+}
+
+/** Contrôle de saisie avant envoi ; le moteur fait foi. Rend la liste des défauts, en clair. */
+export function smtpProblems(form: SmtpInput): string[] {
+  const out: string[] = [];
+  if (!form.label.trim()) out.push('Donnez un nom à ce profil.');
+  if (!form.host.trim() || /\s/.test(form.host.trim())) out.push("Indiquez l'adresse du serveur (par exemple smtp.exemple.fr).");
+  const port = Number(form.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) out.push('Le port est un nombre entre 1 et 65535.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.from_email.trim())) out.push("Indiquez l'adresse d'expéditeur (celle qui apparaîtra dans les emails).");
+  return out;
+}
 
 // ── §4 Jobs ───────────────────────────────────────────────────────────────────
 
@@ -410,6 +511,21 @@ export class EngineClient {
   pgadminOpen(): Observable<PgadminOpened> { return this.call('POST', '/me/pgadmin'); }
   pgadminClose(): Observable<{ closed: boolean }> { return this.call('DELETE', '/me/pgadmin'); }
 
+  // I10 — profils SMTP. Lecture d'un autre par `?as=` (superutilisateur) ; toute écriture est pour soi.
+  smtpList(asUid?: string | null): Observable<{ profiles: SmtpProfile[] }> {
+    return this.call('GET', '/me/smtp', undefined, EngineClient.as(asUid));
+  }
+  smtpCreate(profile: SmtpInput): Observable<SmtpProfile> { return this.call('POST', '/me/smtp', profile); }
+  smtpUpdate(id: string, changes: Partial<SmtpInput>): Observable<SmtpProfile> {
+    return this.call('PUT', `/me/smtp/${seg(id)}`, changes);
+  }
+  smtpDelete(id: string): Observable<{ deleted: boolean }> { return this.call('DELETE', `/me/smtp/${seg(id)}`); }
+  /** L'essai part vers l'adresse du compte de l'appelant — aucune adresse n'est transmise. */
+  smtpTest(id: string): Observable<{ sent: boolean; to: string }> { return this.call('POST', `/me/smtp/${seg(id)}/test`); }
+  projectSmtp(app: string, profile: string | null, apply: 'now' | 'next_deploy'): Observable<SmtpAttach> {
+    return this.call('PUT', `/projects/${seg(app)}/smtp`, { profile, apply });
+  }
+
   // §4
   job(id: string, tail = 200): Observable<Job> {
     return this.call('GET', `/jobs/${seg(id)}`, undefined, { tail: String(tail) });
@@ -472,6 +588,32 @@ export function githubGapLabel(github: GithubGap | null | undefined): { label: s
     case 'no_repo': return { label: 'pas de dépôt GitHub', tone: '' };
     default: return { label: '—', tone: '' };
   }
+}
+
+export interface ProjectSection { key: 'application' | 'outil' | 'autre' | 'tous'; title: string | null; projects: Project[]; }
+
+/**
+ * Sections de la liste des projets, d'après `kind` (I6 v10).
+ *  - aucun projet ne porte `kind` (moteur qui ne le rend pas encore) : UNE
+ *    section sans intertitre, comme avant ;
+ *  - sinon « Applications déployées » puis « Outils du lab » ; une section
+ *    vide n'est pas rendue ; un projet sans `kind` ou d'une nature inconnue
+ *    n'est jamais perdu : il va dans « Autres ».
+ * L'ordre des projets à l'intérieur d'une section est celui du moteur.
+ */
+export function projectSections(projects: Project[]): ProjectSection[] {
+  if (!projects.some(p => typeof p.kind === 'string')) {
+    return projects.length ? [{ key: 'tous', title: null, projects }] : [];
+  }
+  const apps = projects.filter(p => p.kind === 'application');
+  const tools = projects.filter(p => p.kind === 'outil');
+  const others = projects.filter(p => p.kind !== 'application' && p.kind !== 'outil');
+  const sections: ProjectSection[] = [
+    { key: 'application', title: 'Applications déployées', projects: apps },
+    { key: 'outil', title: 'Outils du lab', projects: tools },
+    { key: 'autre', title: 'Autres', projects: others },
+  ];
+  return sections.filter(s => s.projects.length > 0);
 }
 
 /** Les chiffres de l'accueil. `behind` vaut null si le moteur ne rend pas encore `github`. */

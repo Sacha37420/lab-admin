@@ -226,6 +226,9 @@
       <app-ma-base [database]="p.database" [actions]="!!me()?.uid && me()?.uid === p.owner"
                    [pgadminOpen]="me()?.pgadmin?.open" />
 
+      <!-- ── Email (I10) : lecture seule si ce projet n'est pas le mien ──────── -->
+      <app-email-projet [app]="p.name" [smtp]="p.smtp" [canAct]="!!me()?.uid && me()?.uid === p.owner" (applique)="reload()" />
+
       <!-- ── Accès ────────────────────────────────────────────────────────── -->
       <div class="pj-card">
         <h2>Accès</h2>

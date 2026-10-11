@@ -24,8 +24,8 @@ import { preopenTab, sendTab } from '../../core/tool-tab';
   selector: 'app-ma-base',
   standalone: true,
   template: `
-    <div class="pj-card">
-      <h2>{{ actions ? 'Ma base' : 'Base de données' }}</h2>
+    <div class="pj-card" [class.pj-bare]="bare">
+      @if (!bare) { <h2>{{ actions ? 'Ma base' : 'Base de données' }}</h2> }
       @if (database; as db) {
         <dl class="pj-dl">
           <dt>Hôte</dt><dd><code>{{ db.host }}</code></dd>
@@ -101,6 +101,8 @@ export class MaBaseComponent implements OnChanges, OnDestroy {
   private engine = inject(EngineService);
 
   @Input() database: DatabaseInfo | null = null;
+  /** Sans cadre ni titre : le parent fournit la carte (page Services, au graphisme « Outils »). */
+  @Input() bare = false;
   /** Mot de passe et pgAdmin proposés : seulement pour sa propre base. */
   @Input() actions = false;
   /** `pgadmin.open` de `GET /me`, si le moteur le rend. */

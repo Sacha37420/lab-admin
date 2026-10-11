@@ -11,6 +11,7 @@ import {
 import { preopenTab, sendTab } from '../../core/tool-tab';
 import { JobSuiviComponent } from '../../shared/job-suivi/job-suivi.component';
 import { MaBaseComponent } from '../../shared/ma-base/ma-base.component';
+import { EmailProjetComponent } from '../../shared/email/email-projet.component';
 
 /**
  * Page d'un projet (`/projets/<app>`, contrat multi-dev I6 v6) : tout ce qu'un
@@ -22,7 +23,7 @@ import { MaBaseComponent } from '../../shared/ma-base/ma-base.component';
 @Component({
   selector: 'app-projet',
   standalone: true,
-  imports: [FormsModule, RouterLink, DatePipe, JobSuiviComponent, MaBaseComponent],
+  imports: [FormsModule, RouterLink, DatePipe, JobSuiviComponent, MaBaseComponent, EmailProjetComponent],
   templateUrl: './projet.component.html',
 })
 export class ProjetComponent implements OnInit {

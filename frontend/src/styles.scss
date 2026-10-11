@@ -475,14 +475,14 @@ code, pre, .mono { font-family: var(--font-mono); }
 .pj-fld {
   display: flex; flex-direction: column; gap: var(--space-2); flex: 1 1 200px; min-width: 0;
   > span { font-size: var(--text-sm); font-weight: 600; color: var(--text-mute); }
-  input[type='text'], select, textarea {
+  input[type='text'], input[type='password'], select, textarea {
     width: 100%; border-radius: var(--radius-sm); border: 1px solid var(--border);
     background: var(--bg); color: var(--text); outline: none;
     font-family: var(--font-ui); font-size: var(--text-base);
     &:focus { border-color: var(--accent); }
     &:focus-visible { box-shadow: 0 0 0 3px var(--accent-tint); }
   }
-  input[type='text'], select { min-height: 44px; padding: 0 var(--space-4); }
+  input[type='text'], input[type='password'], select { min-height: 44px; padding: 0 var(--space-4); }
   textarea { min-height: 88px; padding: var(--space-3) var(--space-4); resize: vertical; font-family: var(--font-mono); font-size: var(--text-sm); }
 }
 .pj-check {
@@ -577,3 +577,41 @@ fieldset.pj-fld { border: none; padding: 0; margin: 0; }
   .pj-actions { flex-wrap: wrap; width: 100%; > * { flex: 1 1 auto; } }
   .pj-toolbar-actions { margin-left: 0; width: 100%; > * { flex: 1 1 auto; } }
 }
+
+/* ─── Email (comptes d'envoi) ──────────────────────────────────────────── */
+a.pj-badge { min-height: 44px; text-decoration: none; &:hover { border-color: var(--accent); color: var(--accent); } }
+.pj-check input[type='radio'] { flex-shrink: 0; }
+
+/* Dialogue de confirmation (<dialog> natif, showModal) — tokens uniquement. */
+.pj-dialog {
+  margin: auto; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--card); color: var(--text);
+  width: min(480px, calc(100vw - 2 * var(--space-4)));
+  &::backdrop { background: var(--text); opacity: 0.45; }
+}
+.pj-dialog-body {
+  display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-5);
+  h3 { font-size: var(--text-lg); font-weight: 600; color: var(--text); }
+  p { font-size: var(--text-sm); line-height: 1.5; color: var(--text); }
+  strong { overflow-wrap: anywhere; }
+  code { font-family: var(--font-mono); color: var(--accent-deep); overflow-wrap: anywhere; }
+}
+.pj-dialog-actions { justify-content: flex-end; }
+
+/* ─── Page Services au graphisme « Outils » (v10) ───────────────────────── */
+/* Lien d'une carte de service : le style de .svc-url, avec une cible de 44 px. */
+.service-card .svc-link {
+  display: inline-flex; align-items: center; min-height: 44px;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font-family: var(--font-mono); font-size: var(--text-sm); color: var(--accent); text-decoration: none;
+  &:hover { text-decoration: underline; }
+}
+.service-card .svc-command { overflow-wrap: anywhere; color: var(--text); font-size: var(--text-xs); margin-bottom: var(--space-1); }
+.services-grid.svc-wide { grid-template-columns: 1fr; }
+.services-grid.svc-intro { padding-bottom: 0; }
+/* Blocs interactifs posés dans une .env-card : ni cadre ni fond propres. */
+.pj-card.pj-bare { background: transparent; border: 0; border-radius: 0; outline-offset: -2px; }
+
+/* ─── Projets en deux sections (v10) ───────────────────────────────────── */
+.pj-section { display: flex; flex-direction: column; gap: var(--space-2); }
+.pj-section-title { font-size: var(--text-lg); font-weight: 600; color: var(--text); margin-top: var(--space-2); }

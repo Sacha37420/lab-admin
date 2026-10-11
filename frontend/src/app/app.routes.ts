@@ -31,14 +31,12 @@ export const routes: Routes = [
       import('./pages/projets/projet.component').then(m => m.ProjetComponent),
     canActivate: [labGuard],
   },
+  // ── Anciennes routes (v10) : pages fusionnées. Une redirection ne donne aucun droit :
+  //    la garde de la page d'arrivée s'applique, et le contenu d'admin y reste conditionné
+  //    au groupe `admins` (bloc de conception, cartes d'administration).
+  { path: 'outils', pathMatch: 'full', redirectTo: 'services' },
+  { path: 'conception', pathMatch: 'full', redirectTo: 'projets' },
   // ── Administration : tout ce qui suit est réservé au groupe `admins` ────────
-  {
-    // L'ancien accueil d'administration (App Builder, applications conçues).
-    path: 'conception',
-    loadComponent: () =>
-      import('./pages/dashboard/dashboard.component').then(m => m.DashboardComponent),
-    canActivate: [adminGuard],
-  },
   {
     path: 'code',
     loadComponent: () =>
@@ -49,12 +47,6 @@ export const routes: Routes = [
     path: 'apps-hebergees',
     loadComponent: () =>
       import('./pages/apps-hebergees/apps-hebergees.component').then(m => m.AppsHebergeesComponent),
-    canActivate: [adminGuard],
-  },
-  {
-    path: 'outils',
-    loadComponent: () =>
-      import('./pages/outils/outils.component').then(m => m.OutilsComponent),
     canActivate: [adminGuard],
   },
   {

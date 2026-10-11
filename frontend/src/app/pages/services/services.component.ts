@@ -4,25 +4,26 @@ import { EngineService } from '../../core/engine.service';
 import { KeycloakService } from '../../core/keycloak.service';
 import { Me, Profile, profileOf } from '../../core/engine.client';
 import { MaBaseComponent } from '../../shared/ma-base/ma-base.component';
+import { EmailProfilsComponent } from '../../shared/email/email-profils.component';
 
 interface Tool { name: string; url: string; description: string }
 interface EnvWindow { __env?: { apiUrl?: string; codeServerUrl?: string } }
 
 /**
- * Services du lab (contrat multi-dev I6 v8) : une carte par service, avec ce
- * qu'il sert et son accès. Règle de la page : un service qu'on ne peut pas
- * ouvrir N'EST PAS AFFICHÉ, plutôt qu'affiché en erreur.
+ * Services du lab (contrat multi-dev I6 v10) : UNE page, qui a absorbé l'ancienne
+ * page « Outils » et en reprend le graphisme (classes `.env-card`,
+ * `.services-grid`, `.service-card` de styles.scss — la référence visuelle).
+ * Règle : un service qu'on ne peut pas ouvrir N'EST PAS AFFICHÉ.
  *
- * - tout le monde (admins et developers) : Mon compte, Storage, OAuth Hub —
- *   ces deux apps admettent les deux groupes qui entrent dans lab-admin ;
- * - développeur initialisé : Ma base + pgAdmin personnel, MCP ;
- * - admins : console Keycloak, pgAdmin partagé, annuaire, éditeur du cadriciel
- *   (`GET /api/tools/` n'est appelé QUE pour eux : il leur est réservé).
+ * - tout le monde (admins et developers) : Mon compte, Storage, OAuth Hub ;
+ * - développeur initialisé : Ma base + pgAdmin personnel, Email, MCP ;
+ * - admins : toutes les entrées de l'ancienne page Outils, telles que
+ *   `GET /api/tools/` les rend (appelé pour eux SEULEMENT), plus l'éditeur du lab.
  */
 @Component({
   selector: 'app-services',
   standalone: true,
-  imports: [MaBaseComponent],
+  imports: [MaBaseComponent, EmailProfilsComponent],
   templateUrl: './services.component.html',
 })
 export class ServicesComponent implements OnInit {
@@ -56,10 +57,6 @@ export class ServicesComponent implements OnInit {
         error: () => this.tools.set([]),
       });
     }
-  }
-
-  tool(name: string): Tool | null {
-    return this.tools().find(t => t.name === name) ?? null;
   }
 
   copyCommand(): void {

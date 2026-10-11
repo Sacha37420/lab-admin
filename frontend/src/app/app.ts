@@ -39,10 +39,8 @@ export class AppComponent {
     { path: '/services',            label: 'Services',           abbr: 'Se' },
     { path: '/projets',             label: 'Projets',            abbr: 'Pr' },
     // Administration (adminGuard sur chaque route).
-    { path: '/conception',          label: 'Conception',         abbr: 'Cn', adminOnly: true },
     { path: '/code',                label: 'Code',               abbr: 'Co', adminOnly: true },
     { path: '/apps-hebergees',      label: 'Apps du lab',        abbr: 'La', adminOnly: true },
-    { path: '/outils',              label: 'Outils',             abbr: 'Ou', adminOnly: true },
     { path: '/nouvel-utilisateur',  label: 'Nouvel utilisateur', abbr: 'Nu', adminOnly: true },
     { path: '/debug',               label: 'Debug',              abbr: 'De', adminOnly: true },
   ];

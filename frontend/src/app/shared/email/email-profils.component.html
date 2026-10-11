@@ -1,0 +1,158 @@
+<div class="pj-card" [class.pj-bare]="bare" #cardRoot tabindex="-1">
+  @if (!bare) { <h2>Email — vos comptes d'envoi</h2> }
+  <p class="pj-hint">
+    Pour que vos applications envoient des emails (confirmation, mot de passe oublié…), enregistrez
+    ici le compte d'envoi de votre choix : celui de votre fournisseur d'email ou d'un service
+    d'envoi. Vous le rattachez ensuite à un projet, sur sa page ; le code de l'application n'a rien
+    à régler.
+  </p>
+
+  @if (loading()) {
+    <p class="pj-hint">Chargement…</p>
+  } @else if (unavailable()) {
+    <p class="pj-hint" role="status">Cette fonction n'est pas encore disponible sur le lab. Elle arrive bientôt ; rien à faire d'ici là.</p>
+  } @else if (loadError()) {
+    <p class="pj-error" role="alert">{{ loadError() }}</p>
+  } @else {
+    @if (profiles().length === 0) {
+      <p class="pj-hint">Aucun compte d'envoi pour l'instant.</p>
+    } @else {
+      <ul class="pj-list">
+        @for (p of profiles(); track p.id) {
+          <li>
+            <div class="pj-item-main">
+              <span class="pj-item-name">{{ p.label }}</span>
+              <span class="pj-meta">
+                <span><code>{{ p.host }}</code> : {{ p.port }}</span>
+                <span>{{ securityLabel(p.security) }}</span>
+                <span>expéditeur <code>{{ p.from_email }}</code></span>
+                @if (p.username) { <span>identifiant <code>{{ p.username }}</code></span> }
+                <span>mot de passe : {{ p.has_password ? 'enregistré' : 'aucun' }}</span>
+              </span>
+              <span class="pj-meta">
+                @if (p.projects.length) {
+                  <span>Utilisé par :</span>
+                  @for (app of p.projects; track app) { <a [routerLink]="['/projets', app]" class="pj-badge">{{ app }}</a> }
+                } @else {
+                  <span>Rattaché à aucun projet.</span>
+                }
+              </span>
+              @if (rowNotice()?.id === p.id) { <span class="pj-success" role="status">{{ rowNotice()?.text }}</span> }
+              @if (rowError()?.id === p.id) { <span class="pj-error" role="alert">{{ rowMessage(rowError()!.error) }}</span> }
+            </div>
+            <div class="pj-row pj-actions">
+              <button type="button" class="btn-secondary" #testBtn (click)="askTest(p, testBtn)" [disabled]="!!busyId()"
+                      [attr.aria-label]="'Envoyer un email d\'essai avec ' + p.label">{{ busyId() === p.id ? 'En cours…' : 'Envoyer un email d\'essai' }}</button>
+              <button type="button" class="btn-secondary" (click)="edit(p)" [disabled]="!!busyId()" [attr.aria-label]="'Modifier ' + p.label">Modifier</button>
+              <button type="button" class="pj-danger" #delBtn (click)="askDelete(p, delBtn)" [disabled]="!!busyId()" [attr.aria-label]="'Supprimer ' + p.label">Supprimer</button>
+            </div>
+          </li>
+        }
+      </ul>
+    }
+
+    @if (notice()) { <p class="pj-success" role="status">{{ notice() }}</p> }
+    @if (staleAfterSave().length) {
+      <p class="pj-hint" role="status">
+        Ces projets tournent encore avec l'ancienne version de ce profil, jusqu'à ce que vous l'appliquiez sur leur page :
+        @for (app of staleAfterSave(); track app) { <a [routerLink]="['/projets', app]" class="pj-badge pj-warn">{{ app }}</a> }
+      </p>
+    }
+
+    @if (!formOpen()) {
+      @if (profiles().length < max) {
+        <div><button type="button" class="btn-primary" (click)="add()">Ajouter un compte d'envoi</button></div>
+      } @else {
+        <p class="pj-hint">{{ max }} comptes au plus : supprimez-en un pour en ajouter un autre.</p>
+      }
+    } @else {
+      <form class="pj-form" (ngSubmit)="save()" autocomplete="off">
+        <h3>{{ editing() ? 'Modifier « ' + editing()?.label + ' »' : "Nouveau compte d'envoi" }}</h3>
+        <div class="pj-row">
+          <label class="pj-fld">
+            <span>Nom (pour vous y retrouver)</span>
+            <input type="text" name="smtpLabel" [(ngModel)]="form.label" maxlength="60" autocomplete="off" placeholder="ex. Mon fournisseur">
+          </label>
+          <label class="pj-fld">
+            <span>Adresse d'expéditeur</span>
+            <input type="text" name="smtpFrom" [(ngModel)]="form.from_email" maxlength="254" autocomplete="off" spellcheck="false" inputmode="email">
+          </label>
+        </div>
+        <div class="pj-row">
+          <label class="pj-fld">
+            <span>Serveur</span>
+            <input type="text" name="smtpHost" [(ngModel)]="form.host" maxlength="253" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="pj-fld">
+            <span>Sécurité</span>
+            <select name="smtpSecurity" [ngModel]="form.security" (ngModelChange)="onSecurity($event)">
+              @for (s of securities; track s) { <option [value]="s">{{ securityLabel(s) }}</option> }
+            </select>
+          </label>
+          <label class="pj-fld">
+            <span>Port</span>
+            <input type="text" name="smtpPort" [ngModel]="form.port" (ngModelChange)="onPort($event)" maxlength="5" autocomplete="off" inputmode="numeric">
+          </label>
+        </div>
+        @if (form.security !== 'none') {
+          <div class="pj-row">
+            <label class="pj-fld">
+              <span>Identifiant</span>
+              <input type="text" name="smtpUser" [(ngModel)]="form.username" maxlength="254" autocomplete="off" spellcheck="false">
+            </label>
+            <label class="pj-fld">
+              <span>Mot de passe</span>
+              <input type="password" class="pj-secret" name="smtpPassword" [(ngModel)]="form.password" maxlength="1024" autocomplete="new-password">
+            </label>
+          </div>
+          <p class="pj-hint">
+            @if (editing()) {
+              Laissez le mot de passe vide pour le garder tel quel{{ editing()?.has_password ? '' : ' (aucun n\'est enregistré)' }}.
+            }
+            Le mot de passe est enregistré sur le lab et ne vous sera plus jamais réaffiché.
+          </p>
+        } @else {
+          <p class="pj-hint">Sans sécurité, aucun identifiant ni mot de passe n'est envoyé : ce choix ne convient qu'à un serveur qui n'en demande pas.</p>
+        }
+        @if (problems().length) {
+          <ul class="pj-reasons" role="alert">@for (pb of problems(); track $index) { <li>{{ pb }}</li> }</ul>
+        }
+        @if (saveError(); as e) {
+          <p class="pj-error" role="alert">{{ e.code === 'no_engine' ? "Cette fonction n'est pas encore disponible sur le lab." : e.detail }} Le mot de passe a été effacé du formulaire : ressaisissez-le.</p>
+          @if (e.reasons.length) { <ul class="pj-reasons">@for (r of e.reasons; track $index) { <li>{{ r }}</li> }</ul> }
+        }
+        <div class="pj-row">
+          <button type="submit" class="btn-primary" [disabled]="saving()">{{ saving() ? 'Enregistrement…' : 'Enregistrer' }}</button>
+          <button type="button" class="btn-secondary" (click)="cancel()" [disabled]="saving()">Annuler</button>
+        </div>
+      </form>
+    }
+  }
+
+  <!-- Annonce avant l'envoi d'un email d'essai -->
+  <dialog #testDialog class="pj-dialog" aria-labelledby="pj-test-title" (close)="onTestClosed()" (click)="onBackdrop($event)">
+    @if (testTarget(); as t) {
+      <div class="pj-dialog-body">
+        @if (dialogMode() === 'test') {
+          <h3 id="pj-test-title">Envoyer un email d'essai ?</h3>
+          <p>
+            Un email va partir vers <strong>{{ kc.email || "l'adresse de votre compte" }}</strong>, l'adresse de votre compte sur le lab,
+            par le serveur <code>{{ t.host }}</code> (compte « {{ t.label }} »).
+          </p>
+          <p class="pj-hint">L'essai ne peut être envoyé à aucune autre adresse. Un essai toutes les 30 secondes au plus.</p>
+          <div class="pj-row pj-dialog-actions">
+            <button type="button" class="btn-secondary" (click)="closeTest()">Annuler</button>
+            <button type="button" class="btn-primary" (click)="confirmTest()">Envoyer l'essai</button>
+          </div>
+        } @else {
+          <h3 id="pj-test-title">Supprimer ce compte d'envoi ?</h3>
+          <p>Le compte « {{ t.label }} » (<code>{{ t.host }}</code>) et son mot de passe seront effacés du lab.</p>
+          <div class="pj-row pj-dialog-actions">
+            <button type="button" class="btn-secondary" (click)="closeTest()">Annuler</button>
+            <button type="button" class="pj-danger" (click)="confirmDelete()">Supprimer</button>
+          </div>
+        }
+      </div>
+    }
+  </dialog>
+</div>

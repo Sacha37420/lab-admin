@@ -8,11 +8,12 @@ import { EngineService } from '../../core/engine.service';
 import { KeycloakService } from '../../core/keycloak.service';
 import {
   APP_NAME_RE, DevSummary, EngineError, Group, Job, Me, NameCheck, Profile, Project, ProjectType,
-  githubGapLabel, isWorkspaceUrl,
+  githubGapLabel, isWorkspaceUrl, projectSections,
   profileOf, stateLabel, toEngineError, verdictLabel,
 } from '../../core/engine.client';
 import { JobSuiviComponent } from '../../shared/job-suivi/job-suivi.component';
 import { preopenTab, sendTab } from '../../core/tool-tab';
+import { DashboardComponent } from '../dashboard/dashboard.component';
 
 /**
  * Page « Projets » (`/projets`, contrat multi-dev I6 v8) : une ligne par projet
@@ -24,11 +25,14 @@ import { preopenTab, sendTab } from '../../core/tool-tab';
  *  - admin_only / none : un message, aucune liste (ils n'ont pas de projets).
  *
  * La première connexion (`me/init`) se joue sur l'accueil, pas ici.
+ *
+ * v10 : la liste est en deux sections d'après `kind`, et la page porte en bas,
+ * POUR LES ADMINS SEULEMENT, le bloc de conception de l'ancienne `/conception`.
  */
 @Component({
   selector: 'app-mes-projets',
   standalone: true,
-  imports: [FormsModule, RouterLink, DatePipe, JobSuiviComponent],
+  imports: [FormsModule, RouterLink, DatePipe, JobSuiviComponent, DashboardComponent],
   templateUrl: './mes-projets.component.html',
 })
 export class MesProjetsComponent implements OnInit {
@@ -175,6 +179,8 @@ export class MesProjetsComponent implements OnInit {
     const list = this.projects();
     return q ? list.filter(p => p.name.toLowerCase().includes(q) || p.owner.toLowerCase().includes(q)) : list;
   });
+  /** « Applications déployées » / « Outils du lab », ou une seule liste si le moteur ne dit pas la nature. */
+  sections = computed(() => projectSections(this.visible()));
 
   // ── VS Code depuis la liste ────────────────────────────────────────────────
 
