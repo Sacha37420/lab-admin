@@ -37,7 +37,7 @@
           }
         </div>
         @if (wsOpened(); as w) {
-          @if (!w.workspace.github_token) {
+          @if (!w.github_token) {
             <p class="pj-hint">Éditeur ouvert sur le projet d'un autre : aucun jeton GitHub n'y est injecté (<code>git push</code> n'y est pas préconfiguré).</p>
           }
         }
@@ -53,7 +53,7 @@
         <h2>Déploiement</h2>
         @if (p.deployed; as d) {
           <dl class="pj-dl">
-            <dt>En service</dt><dd><code>{{ d.sha.slice(0, 12) }}</code> — {{ d.at | date:'dd/MM/yyyy HH:mm' }}</dd>
+            <dt>En service</dt><dd><code>{{ shortSha(d.sha) }}</code> — {{ d.at | date: dateFormat }}</dd>
             @if (d.tests; as t) {
               <dt>Tests</dt>
               <dd>
@@ -75,7 +75,7 @@
                 <option value="">Dernier commit poussé</option>
                 @for (commit of c.commits; track commit.sha) {
                   <option [value]="commit.sha">
-                    {{ commit.sha.slice(0, 7) }} — {{ commit.message }} ({{ commit.author }}, {{ commit.date | date:'dd/MM HH:mm' }}){{ commit.deployed ? ' — en service' : '' }}
+                    {{ shortSha(commit.sha) }} — {{ commit.message }} ({{ commit.author }}, {{ commit.date | date: dateFormat }}){{ commit.deployed ? ' — en service' : '' }}
                   </option>
                 }
               </select>
@@ -176,7 +176,7 @@
       </div>
 
       <!-- ── Variables ────────────────────────────────────────────────────── -->
-      <div class="pj-card">
+      <div class="pj-card" #envCard tabindex="-1">
         <h2>Variables d'environnement</h2>
         @if (!envLoaded()) {
           <div><button type="button" class="btn-secondary" (click)="loadEnv()">Afficher les variables</button></div>
@@ -195,7 +195,7 @@
                 @if (!v.managed) {
                   <div class="pj-row">
                     <button type="button" class="btn-secondary" (click)="editVar(v)">Modifier</button>
-                    <button type="button" class="pj-danger" (click)="removeVar(v)" [disabled]="envBusy()"
+                    <button type="button" class="pj-danger" #delVar (click)="askRemoveVar(v, delVar, confirmDialog, envCard)" [disabled]="envBusy()"
                             [attr.aria-label]="'Supprimer ' + v.key">Supprimer</button>
                   </div>
                 }
@@ -238,7 +238,7 @@
           @if (p.urls.api; as u) { <dt>API</dt><dd><a [href]="u" target="_blank" rel="noopener">{{ u }}</a></dd> }
           <dt>Dépôt GitHub</dt>
           <dd>@if (repoPage(p.repo_url); as u) { <a [href]="u" target="_blank" rel="noopener">{{ u }}</a> } @else { — }</dd>
-          <dt>Fichiers</dt><dd><a [href]="engine.storageUrl" target="_blank" rel="noopener">Mes fichiers dans storage ↗</a></dd>
+          <dt>Fichiers</dt><dd><a [href]="engine.storageUrl" target="_blank" rel="noopener">Ouvrir Storage ↗</a></dd>
           <dt>MCP</dt><dd><code>{{ p.mcp_url }}</code></dd>
         </dl>
         <h3>Console SQL</h3>
@@ -301,4 +301,5 @@
       </div>
     </section>
   }
+  <app-confirm #confirmDialog />
 </div>

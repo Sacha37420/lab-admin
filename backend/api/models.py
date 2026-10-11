@@ -1,6 +1,11 @@
 from django.db import models
 
 
+# Department et UserRecord : modèles du gabarit d'origine, SANS usage depuis la suppression de
+# /api/me/, /api/departments/ et /api/users/ (plus aucun appelant). Ils restent déclarés parce
+# que leurs tables existent en base (migrations 0001 et 0002, déjà appliquées) : les retirer
+# demande une migration qui SUPPRIME ces tables et leurs lignes — décision à prendre, pas un
+# nettoyage.
 class Department(models.Model):
     """Département ou équipe de l'organisation."""
 

@@ -39,7 +39,6 @@ export class AppComponent {
     { path: '/services',            label: 'Services',           abbr: 'Se' },
     { path: '/projets',             label: 'Projets',            abbr: 'Pr' },
     // Administration (adminGuard sur chaque route).
-    { path: '/code',                label: 'Code',               abbr: 'Co', adminOnly: true },
     { path: '/apps-hebergees',      label: 'Apps du lab',        abbr: 'La', adminOnly: true },
     { path: '/nouvel-utilisateur',  label: 'Nouvel utilisateur', abbr: 'Nu', adminOnly: true },
     { path: '/debug',               label: 'Debug',              abbr: 'De', adminOnly: true },
@@ -72,7 +71,9 @@ export class AppComponent {
       this.mobileOpen.set(false);
       this.mobileClosing.set(false);
       document.body.style.overflow = '';
-      this.burgerBtnRef?.nativeElement.focus();
+      // Au tour suivant : .shell porte encore `inert` tant que le gabarit n'a pas été
+      // rafraîchi, et un élément inerte ne peut pas recevoir le focus.
+      setTimeout(() => this.burgerBtnRef?.nativeElement.focus());
     }, reduced ? 0 : MOBILE_CLOSE_ANIM_MS);
   }
 

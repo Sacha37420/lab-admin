@@ -3,11 +3,12 @@ import { HttpClient } from '@angular/common/http';
 import { EngineService } from '../../core/engine.service';
 import { KeycloakService } from '../../core/keycloak.service';
 import { Me, Profile, profileOf } from '../../core/engine.client';
+import { RouterLink } from '@angular/router';
+import { apiUrl, labEnv } from '../../core/env';
 import { MaBaseComponent } from '../../shared/ma-base/ma-base.component';
 import { EmailProfilsComponent } from '../../shared/email/email-profils.component';
 
 interface Tool { name: string; url: string; description: string }
-interface EnvWindow { __env?: { apiUrl?: string; codeServerUrl?: string } }
 
 /**
  * Services du lab (contrat multi-dev I6 v10) : UNE page, qui a absorbé l'ancienne
@@ -23,7 +24,7 @@ interface EnvWindow { __env?: { apiUrl?: string; codeServerUrl?: string } }
 @Component({
   selector: 'app-services',
   standalone: true,
-  imports: [MaBaseComponent, EmailProfilsComponent],
+  imports: [RouterLink, MaBaseComponent, EmailProfilsComponent],
   templateUrl: './services.component.html',
 })
 export class ServicesComponent implements OnInit {
@@ -42,7 +43,9 @@ export class ServicesComponent implements OnInit {
     const url = this.me()?.mcp_url;
     return url ? `claude mcp add --transport http --client-id lab-mcp --callback-port 8976 lab ${url}` : '';
   });
-  codeUrl = (window as unknown as EnvWindow).__env?.codeServerUrl || '';
+  /** Compte éligible dont l'initialisation n'a pas encore eu lieu (elle se fait sur l'accueil). */
+  needsInit = computed(() => (this.profile() === 'dev' || this.profile() === 'superuser') && !this.me()?.initialized);
+  codeUrl = labEnv().codeServerUrl || '';
 
   ngOnInit(): void {
     // Sans réponse du moteur : seules les cartes qui dépendent de lui manquent.
@@ -51,8 +54,7 @@ export class ServicesComponent implements OnInit {
       error: () => this.me.set(null),
     });
     if (this.kc.isAdmin) {
-      const api = (window as unknown as EnvWindow).__env?.apiUrl ?? 'http://localhost:8083';
-      this.http.get<{ tools: Tool[] }>(`${api}/api/tools/`).subscribe({
+      this.http.get<{ tools: Tool[] }>(`${apiUrl()}/api/tools/`).subscribe({
         next: r => this.tools.set(r.tools ?? []),
         error: () => this.tools.set([]),
       });

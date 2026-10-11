@@ -2,9 +2,8 @@
   <div class="page-header">
     <h1>Debug — Tests end-to-end</h1>
     <p>
-      Catalogue rempli automatiquement à chaque déploiement (<code>setup_unit.sh</code>).
-      Lancer un test exécute réellement le navigateur sur le runner partagé —
-      voir CLAUDE.md, section « Tests end-to-end ».
+      Les tests de cloisonnement de chaque application, relevés à chaque déploiement.
+      Lancer un test ouvre un vrai navigateur sur le serveur : un seul à la fois.
     </p>
   </div>
 
@@ -49,7 +48,7 @@
       @if (!tests().length) {
         <p class="hint">
           Aucun test catalogué pour l'instant. Déployez une app avec un fichier
-          <code>frontend/e2e/cloisonnement.spec.ts</code> (voir CLAUDE.md) pour
+          <code>frontend/e2e/cloisonnement.spec.ts</code> pour
           qu'elle apparaisse ici.
         </p>
       } @else {
@@ -82,7 +81,7 @@
                 <tr>
                   <td class="test-title">{{ t.title }}</td>
                   <td><span class="badge" [class]="t.last_status.toLowerCase()">{{ statusLabel(t.last_status) }}</span></td>
-                  <td>{{ t.last_run_at ? (t.last_run_at | date:'short') : '—' }}</td>
+                  <td>{{ t.last_run_at ? (t.last_run_at | date: dateFormat) : '—' }}</td>
                   <td>{{ t.last_duration_ms ? (t.last_duration_ms / 1000 | number:'1.1-1') + ' s' : '—' }}</td>
                 </tr>
                 @if (t.last_message && (t.last_status === 'FAILED' || t.last_status === 'ERROR')) {

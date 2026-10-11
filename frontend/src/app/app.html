@@ -14,7 +14,10 @@
   }
 </ng-template>
 
-<div class="shell">
+<!-- `inert` tant que le panneau de navigation mobile est ouvert : rien derrière lui n'est
+     atteignable au clavier ni par un lecteur d'écran. Le panneau est un FRÈRE de .shell
+     (voir plus bas), il reste donc seul actif — c'est ce qui tient sa promesse aria-modal. -->
+<div class="shell" [attr.inert]="mobileOpen() ? '' : null">
 
   <aside class="sidebar" [class.collapsed]="collapsed()">
     <a routerLink="/" class="logo" title="Lab Admin">

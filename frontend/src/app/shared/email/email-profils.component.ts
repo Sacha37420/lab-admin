@@ -138,7 +138,7 @@ export class EmailProfilsComponent implements OnInit {
         this.formOpen.set(false);
         this.editing.set(null);
         this.form = emptyForm();
-        this.notice.set(current ? `Profil « ${saved.label} » modifié.` : `Profil « ${saved.label} » ajouté.`);
+        this.notice.set(current ? `Compte d'envoi « ${saved.label} » modifié.` : `Compte d'envoi « ${saved.label} » ajouté.`);
         const stale = saved.stale_projects ?? [];
         this.staleAfterSave.set(stale);
         this.stale.mark(stale, saved.label);
@@ -224,7 +224,7 @@ export class EmailProfilsComponent implements OnInit {
     this.busyId.set(p.id);
     this.rowError.set(null); this.rowNotice.set(null);
     this.engine.smtpDelete(p.id).subscribe({
-      next: () => { this.busyId.set(''); this.notice.set(`Profil « ${p.label} » supprimé.`); this.testOrigin = null; this.load(); this.refocus(); },
+      next: () => { this.busyId.set(''); this.notice.set(`Compte d'envoi « ${p.label} » supprimé.`); this.testOrigin = null; this.load(); this.refocus(); },
       error: err => { this.busyId.set(''); this.rowError.set({ id: p.id, error: toEngineError(err) }); this.refocus(); },
     });
   }
@@ -232,7 +232,7 @@ export class EmailProfilsComponent implements OnInit {
   rowMessage(e: EngineError): string {
     switch (e.code) {
       case 'smtp_in_use':
-        return `Ce profil est utilisé par ${e.projects.length ? e.projects.join(', ') : 'un ou plusieurs projets'} : détachez-le d'abord, sur la page de chaque projet.`;
+        return `Ce compte d'envoi est utilisé par ${e.projects.length ? e.projects.join(', ') : 'un ou plusieurs projets'} : détachez-le d'abord, sur la page de chaque projet.`;
       case 'smtp_error': return `Le serveur d'envoi a refusé : ${e.detail}`;
       case 'rate_limited': return "Un essai vient d'être fait : attendez 30 secondes avant le suivant.";
       case 'no_engine': return "Cette fonction n'est pas encore disponible sur le lab.";

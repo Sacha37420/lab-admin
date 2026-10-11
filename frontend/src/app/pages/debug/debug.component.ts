@@ -1,6 +1,7 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DebugRunJob, DebugTest, LabApiService } from '../../core/lab-api.service';
+import { DATE_FORMAT } from '../../core/format';
 
 interface AppGroup {
   app: string;
@@ -18,6 +19,7 @@ const POLL_MS = 2000;
 })
 export class DebugComponent implements OnInit, OnDestroy {
   private api = inject(LabApiService);
+  readonly dateFormat = DATE_FORMAT;
 
   tests = signal<DebugTest[]>([]);
   loading = signal(true);

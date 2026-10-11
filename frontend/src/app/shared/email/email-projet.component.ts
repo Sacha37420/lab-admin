@@ -54,7 +54,7 @@ import { EngineError, ProjectSmtp, SmtpProfile, smtpIsStale, toEngineError } fro
                 </select>
               </label>
               <fieldset class="pj-fld">
-                <span>Quand ?</span>
+                <legend>Quand ?</legend>
                 <label class="pj-check">
                   <input type="radio" name="smtpApply" value="next_deploy" [(ngModel)]="apply">
                   Au prochain déploiement

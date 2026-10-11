@@ -1,10 +1,17 @@
 """Tests de lab-admin — cloisonnement par vue (contrat multi-dev, I6).
 
-Lancer (conteneur jetable, vraie base de test PostgreSQL) :
+Lancer — le rôle `lab` de lab-admin ne peut pas créer de base de test : on lui
+donne un PostgreSQL jetable, le temps des tests.
 
-    docker run --rm --env-file lab-admin/.env --network dev-net \\
+    docker network create lab-admin-test-net
+    docker run -d --rm --name lab-admin-test-pg --network lab-admin-test-net \\
+      -e POSTGRES_USER=essai -e POSTGRES_PASSWORD=essai -e POSTGRES_DB=essai \\
+      --tmpfs /var/lib/postgresql/data postgres:16-alpine
+    docker run --rm --env-file lab-admin/.env --network lab-admin-test-net \\
+      -e DB_HOST=lab-admin-test-pg -e DB_NAME=essai -e DB_USER=essai -e DB_PASSWORD=essai \\
       -v "$PWD/lab-admin/backend:/app:ro" -w /app lab-admin-backend \\
       python manage.py test api
+    docker stop lab-admin-test-pg && docker network rm lab-admin-test-net
 
 lab-admin laisse entrer deux groupes (`admins`, `developers`) mais son backend
 n'a AUCUNE vue pour les non-admins : l'interface des développeurs parle au
@@ -76,7 +83,11 @@ class DefaultDenyTests(TestCase):
             checked.append(route)
         # L'inventaire couvre bien tout ce qui existait, et rien n'a été ouvert.
         self.assertEqual(len(checked), len(api_urls.urlpatterns) - len(SHARED_SECRET))
-        for expected in ('me/', 'users/', 'departments/', 'apps/public/', 'infrastructure/',
+        # Routes sans appelant retirées (relecture du 2026-10-11) : elles ne doivent pas revenir.
+        for gone in ('me/', 'users/', 'departments/'):
+            self.assertNotIn(gone, checked)
+            self.assertEqual(self.sacha.get('/api/' + gone).status_code, 404)
+        for expected in ('apps/public/', 'infrastructure/',
                          'tools/', 'lab-users/groups/', 'lab-users/', 'debug/tests/',
                          'debug/run/', 'debug/jobs/<int:pk>/'):
             self.assertIn(expected, checked)
@@ -95,8 +106,7 @@ class DefaultDenyTests(TestCase):
 
     def test_admins_keep_everything(self):
         for c in (self.sacha, self.e2e):
-            for path in ('/api/me/', '/api/users/', '/api/departments/', '/api/tools/',
-                         '/api/infrastructure/', '/api/debug/tests/'):
+            for path in ('/api/tools/', '/api/infrastructure/', '/api/debug/tests/'):
                 with self.subTest(path=path):
                     self.assertEqual(c.get(path).status_code, 200, path)
 
@@ -111,7 +121,7 @@ class DefaultDenyTests(TestCase):
 
     def test_anonymous_gets_nothing(self):
         anon = APIClient()
-        for path in ('/api/me/', '/api/users/', '/api/tools/'):
+        for path in ('/api/tools/', '/api/infrastructure/', '/api/lab-users/groups/'):
             self.assertIn(anon.get(path).status_code, (401, 403), path)
 
 
@@ -153,7 +163,7 @@ class RealTokenGateTests(TestCase):
 
     def test_developer_passes_the_door_and_reaches_nothing(self):
         tok = token('hassan', ['developers', 'amis'])
-        for path in ('/api/users/', '/api/tools/', '/api/infrastructure/', '/api/me/',
+        for path in ('/api/tools/', '/api/infrastructure/',
                      '/api/lab-users/groups/', '/api/debug/tests/', '/api/apps/public/'):
             with self.subTest(path=path):
                 resp = self.get(path, tok)

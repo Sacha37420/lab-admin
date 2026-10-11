@@ -1,5 +1,6 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { apiUrl } from '../../core/env';
 
 interface HostedApp {
   name: string;
@@ -12,7 +13,6 @@ interface HostedApp {
   frontend_url: string | null;
   backend_url: string | null;
 }
-interface EnvWindow { __env?: { apiUrl?: string } }
 
 @Component({
   selector: 'app-apps-hebergees',
@@ -26,18 +26,10 @@ export class AppsHebergeesComponent implements OnInit {
   loading = signal(true);
   error   = signal('');
 
-  private get apiUrl(): string {
-    return (window as unknown as EnvWindow).__env?.apiUrl ?? 'http://localhost:8083';
-  }
-
   ngOnInit(): void {
-    this.http.get<{ apps: HostedApp[] }>(`${this.apiUrl}/api/infrastructure/`).subscribe({
+    this.http.get<{ apps: HostedApp[] }>(`${apiUrl()}/api/infrastructure/`).subscribe({
       next:  res => { this.apps.set(res.apps ?? []); this.loading.set(false); },
       error: ()  => { this.error.set('Impossible de charger la liste des apps.'); this.loading.set(false); },
     });
-  }
-
-  hasUrl(app: HostedApp): boolean {
-    return !!(app.frontend_url || app.backend_url);
   }
 }

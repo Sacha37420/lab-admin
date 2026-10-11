@@ -9,7 +9,8 @@ import { preopenTab, sendTab } from '../../core/tool-tab';
  * Bloc « Ma base » (contrat multi-dev I6/I9 v7) : coordonnées de la base du
  * développeur, mot de passe À LA DEMANDE, pgAdmin personnel.
  *
- * Règles du mot de passe — c'est le seul secret que lab-admin affiche :
+ * Règles du mot de passe (les mêmes que pour le mot de passe d'un compte créé,
+ * pages/nouvel-utilisateur) :
  *  - demandé au moteur AU CLIC seulement (`GET /me/database-password`), jamais
  *    au chargement ;
  *  - gardé dans un signal de CE composant et nulle part ailleurs : ni

@@ -7,10 +7,8 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 from rest_framework import generics, status
 from rest_framework.response import Response
-from .models import DebugRunJob, DebugTest, Department, UserRecord
-from .serializers import (
-    DebugRunJobSerializer, DebugTestSerializer, DepartmentSerializer, UserRecordSerializer,
-)
+from .models import DebugRunJob, DebugTest
+from .serializers import DebugRunJobSerializer, DebugTestSerializer
 from . import keycloak_admin, lab_groups, infra_info
 from .keycloak_admin import KeycloakAdminError
 from .models_appbuilder import AppSpec as RemoteAppSpec
@@ -18,54 +16,11 @@ from .serializers_appbuilder import serialize_appspec
 from .tasks import run_debug_tests
 
 
-class MeView(APIView):
-    """
-    GET /api/me/
-    Retourne l'identité de l'utilisateur authentifié (depuis le JWT + DB).
-    Crée un UserRecord à la première visite.
-    """
-
-    def get(self, request):
-        email    = request.user.email
-        username = request.user.username
-        groups   = request.user.claims.get('groups', [])
-
-        record, created = UserRecord.objects.get_or_create(
-            email=email,
-            defaults={'display_name': username},
-        )
-
-        return Response({
-            'email':        email,
-            'username':     username,
-            'groups':       groups,
-            'display_name': record.display_name,
-            'department':   DepartmentSerializer(record.department).data
-                            if record.department else None,
-            'registered_at': record.registered_at,
-            'is_new':        created,
-        })
-
-
-class DepartmentListView(generics.ListAPIView):
-    """GET /api/departments/ — liste tous les départements."""
-
-    queryset         = Department.objects.all()
-    serializer_class = DepartmentSerializer
-
-
-class UserListView(generics.ListAPIView):
-    """GET /api/users/ — liste tous les utilisateurs enregistrés."""
-
-    queryset         = UserRecord.objects.select_related('department')
-    serializer_class = UserRecordSerializer
-
-
 class AppSpecPublicView(APIView):
     """
     GET /api/apps/public/ — catalogue app-builder (data models, endpoints, pages),
     tous propriétaires confondus. Lu directement dans le schéma 'app_builder' de
-    devdb (voir api/models_appbuilder.py) — plus d'appel HTTP à app-builder.
+    la base du cadriciel (voir api/models_appbuilder.py) — plus d'appel HTTP à app-builder.
     """
 
     def get(self, request):

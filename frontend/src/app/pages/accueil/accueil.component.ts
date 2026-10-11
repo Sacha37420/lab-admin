@@ -60,16 +60,19 @@ export class AccueilComponent implements OnInit {
         href: linked === true ? undefined : this.githubUrl(), action: 'Relier mon compte GitHub' },
       { title: 'Créer un projet',
         text: 'Un nom, un type, les groupes qui auront le droit de l\'utiliser : le lab crée le dépôt, la base et l\'adresse.',
-        state: created, link: '/projets', action: created === 'done' ? 'Voir mes projets' : 'Créer mon premier projet' },
+        state: created,
+        // Pas d'invitation à créer tant que l'étape GitHub n'est pas faite : la création échouerait.
+        ...(created === 'done' ? { link: '/projets', action: 'Voir mes projets' }
+          : linked === true ? { link: '/projets', action: 'Créer mon premier projet' } : {}) },
       { title: 'L\'ouvrir dans VS Code',
         text: 'Un éditeur dans le navigateur, limité à votre projet, avec un terminal et vos assistants (Claude Code, Mistral Vibe).',
-        state: me?.workspace?.open ? 'now' : 'unknown', link: '/projets' },
+        state: me?.workspace?.open ? 'now' : 'unknown' },
       { title: 'Pousser votre code sur GitHub',
         text: 'Avec git push, depuis l\'éditeur. Seul ce qui est sur GitHub peut être mis en ligne.',
         state: has(p => !!p.github?.head || !!p.deployed) },
       { title: 'Mettre en ligne',
         text: 'Un bouton « Déployer » sur la page du projet. Le lab vérifie, teste, puis met en service.',
-        state: has(p => !!p.deployed), link: '/projets' },
+        state: has(p => !!p.deployed) },
     ];
   });
 

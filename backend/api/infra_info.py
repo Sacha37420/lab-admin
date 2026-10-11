@@ -47,7 +47,7 @@ def hosted_apps() -> list[dict]:
 
     Volontairement **découplé de .app-descriptions** depuis le 2026-07-30 : ce
     fichier ne sert plus qu'à la vitrine publique de la page 404. lab-admin est
-    un outil d'administration réservé aux admins, il doit montrer l'état réel du
+    une page d'administration (« Apps du lab », admins), elle doit montrer l'état réel du
     lab — une app hors vitrine (ou simplement oubliée dans ce fichier) y était
     invisible en silence, ce qui est le contraire de l'usage attendu.
 

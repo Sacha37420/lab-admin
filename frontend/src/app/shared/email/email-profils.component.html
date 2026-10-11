@@ -54,7 +54,7 @@
     @if (notice()) { <p class="pj-success" role="status">{{ notice() }}</p> }
     @if (staleAfterSave().length) {
       <p class="pj-hint" role="status">
-        Ces projets tournent encore avec l'ancienne version de ce profil, jusqu'à ce que vous l'appliquiez sur leur page :
+        Ces projets tournent encore avec l'ancienne version de ce compte d'envoi, jusqu'à ce que vous l'appliquiez sur leur page :
         @for (app of staleAfterSave(); track app) { <a [routerLink]="['/projets', app]" class="pj-badge pj-warn">{{ app }}</a> }
       </p>
     }

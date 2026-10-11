@@ -1,7 +1,10 @@
 <div class="page">
   <div class="page-header">
-    <h1 id="pj-title">{{ viewingOther() ? 'Projets de ' + shown()?.viewed_as : (showOwner() ? 'Projets du lab' : 'Mes projets') }}</h1>
-    <p>Une ligne par application : son état, la version en service, son retard éventuel sur GitHub.</p>
+    <h1 id="pj-title">Projets</h1>
+    <p>
+      <span id="pj-scope">{{ viewingOther() ? 'Ceux de ' + shown()?.viewed_as : (showOwner() ? 'Tous ceux du lab' : 'Les vôtres') }}</span>
+      — une ligne par application : son état, la version en service, son retard éventuel sur GitHub.
+    </p>
   </div>
 
   @if (loading()) {
@@ -13,10 +16,8 @@
       <h2>Aucun projet à votre nom</h2>
       @if (profile() === 'admin_only') {
         <p class="pj-hint">Votre compte administre le lab sans y développer. Les applications du lab sont listées dans « Apps du lab ».</p>
-      } @else if (self()?.ineligible_reason === 'invalid_uid') {
-        <p class="pj-hint">Votre identifiant ne peut pas servir de compte développeur (lettres minuscules et chiffres uniquement).</p>
       } @else {
-        <p class="pj-hint">Votre compte n'est pas encore développeur sur le lab. Demandez à l'administrateur de vous ajouter au groupe <code>developers</code>.</p>
+        <p class="pj-hint">Votre identifiant ne peut pas servir de compte développeur sur le lab (lettres minuscules et chiffres uniquement).</p>
       }
     </div>
   } @else if (!self()?.initialized) {
@@ -26,7 +27,7 @@
       <div><a class="btn-primary" routerLink="/">Aller à l'accueil</a></div>
     </div>
   } @else {
-    <section class="pj" aria-labelledby="pj-title">
+    <section class="pj" aria-labelledby="pj-title pj-scope">
 
       <div class="pj-row pj-toolbar">
         @if (self()?.is_superuser && devs().length) {
@@ -66,8 +67,15 @@
       <div class="pj-card">
         <h2>Nouveau projet</h2>
         @if (self()?.github_linked === false) {
-          <p class="pj-error">Reliez d'abord votre compte GitHub : le dépôt du projet est créé sous votre compte.</p>
-        }
+          <!-- Sans GitHub relié : le lien pour le relier, et PAS de formulaire (la création échouerait). -->
+          <p class="pj-error">Reliez d'abord votre compte GitHub : le dépôt du projet est créé sous votre compte. Le formulaire s'ouvrira ensuite.</p>
+          <div class="pj-row">
+            <a class="btn-primary" [href]="githubUrl()" target="_blank" rel="noopener">Relier mon compte GitHub ↗</a>
+            <button type="button" class="btn-secondary" (click)="recheckGithub()" [disabled]="recheckingGithub()">
+              {{ recheckingGithub() ? 'Vérification…' : "C'est fait — vérifier" }}
+            </button>
+          </div>
+        } @else {
         <form class="pj-form" (ngSubmit)="create()">
           <label class="pj-fld">
             <span>Nom</span>
@@ -107,7 +115,7 @@
           </div>
 
           <fieldset class="pj-fld" [disabled]="!!createJobId()">
-            <span>Groupes autorisés à utiliser l'app (au moins un)</span>
+            <legend>Groupes autorisés à utiliser l'app (au moins un)</legend>
             @if (groupsError()) { <p class="pj-error">{{ groupsError() }}</p> }
             <div class="pj-row">
               @for (g of groups(); track g.name) {
@@ -138,6 +146,7 @@
             <div><button type="submit" class="btn-primary" [disabled]="!canCreate">{{ creating() ? 'Envoi…' : 'Créer le projet' }}</button></div>
           }
         </form>
+        }
       </div>
     }
 
@@ -169,13 +178,13 @@
                   <span class="pj-meta">
                     <span [class]="'pj-badge ' + stateClass(p)">{{ stateLabel(p.state) }}</span>
                     @if (p.deployed; as d) {
-                      <span>version <code>{{ d.sha.slice(0, 7) }}</code> du {{ d.at | date:'dd/MM/yyyy HH:mm' }}</span>
+                      <span>version <code>{{ shortSha(d.sha) }}</code> du {{ d.at | date: dateFormat }}</span>
                     } @else {
                       <span>jamais déployé</span>
                     }
                     <span class="pj-gap">GitHub :
                       <span [class]="'pj-badge ' + toneClass(gap(p.github).tone)"
-                            [title]="p.github?.checked_at ? 'vérifié le ' + (p.github?.checked_at | date:'dd/MM/yyyy HH:mm') : ''">{{ gap(p.github).label }}</span>
+                            [title]="p.github?.checked_at ? 'vérifié le ' + (p.github?.checked_at | date: dateFormat) : ''">{{ gap(p.github).label }}</span>
                     </span>
                     @if (p.workspace.open) { <span class="pj-badge">éditeur ouvert</span> }
                   </span>

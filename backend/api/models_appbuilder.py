@@ -1,7 +1,7 @@
 """Miroir en lecture seule des tables d'app-builder (schéma 'app_builder').
 
-Toutes les apps du lab partagent la même instance Postgres ``devdb`` (un
-schéma par app, rôle ``devuser`` commun à toutes — voir CLAUDE.md). Plutôt que
+lab-admin et app-builder sont deux services du cadriciel : ils partagent la base
+``lab`` (un schéma chacun, rôle ``lab``). Plutôt que
 d'appeler l'API HTTP d'app-builder, ce module lit directement ses tables via
 un second alias de connexion (``DATABASES['app_builder']``, même
 host/user/password que la connexion par défaut, ``search_path`` différent).

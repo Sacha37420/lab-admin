@@ -257,7 +257,7 @@ test('écart avec GitHub (I5 v8) : les six statuts, et l\'absence du champ', () 
 
 test('chiffres de l\'accueil', () => {
   const p = (state: string, github?: unknown) => ({ name: 'x', state, github }) as unknown as Project;
-  assert.deepEqual(projectCounts([]), { total: 0, running: 0, behind: null });
+  assert.deepEqual(projectCounts([]), { total: 0, running: 0, behind: 0 });          // aucun projet : zéro, pas « — »
   assert.deepEqual(projectCounts([p('running'), p('stopped')]), { total: 2, running: 1, behind: null });
   assert.deepEqual(projectCounts([p('running', { status: 'behind', behind: 2 }), p('running', { status: 'up_to_date' }),
     p('never_deployed', { status: 'not_deployed' })]), { total: 3, running: 2, behind: 1 });
@@ -267,7 +267,6 @@ test('I10 : routes des profils SMTP', async () => {
   const { client, calls } = recorder();
   const run = async (o: Observable<unknown>) => { await firstValueFrom(o); return calls.pop(); };
   assert.deepEqual(await run(client.smtpList()), { method: 'GET', path: '/me/smtp' });
-  assert.deepEqual(await run(client.smtpList('hassan')), { method: 'GET', path: '/me/smtp', params: { as: 'hassan' } });
   const body = { label: 'Gmail', host: 'smtp.gmail.com', port: 587, security: 'starttls' as const, username: 'moi@exemple.fr', from_email: 'moi@exemple.fr', password: 'p w' };
   assert.deepEqual(await run(client.smtpCreate(body)), { method: 'POST', path: '/me/smtp', body });
   assert.deepEqual(await run(client.smtpUpdate('ab12', { label: 'x' })), { method: 'PUT', path: '/me/smtp/ab12', body: { label: 'x' } });
@@ -331,12 +330,12 @@ test('I6 v10 : sections de la liste d\'après `kind`', () => {
   // Deux natures : applications d'abord, ordre du moteur conservé dans chaque section.
   const two = projectSections([p('storage', 'outil'), p('test', 'application'), p('lab-admin', 'outil'), p('carto', 'application')]);
   assert.deepEqual(two.map(s => [s.title, s.projects.map(x => x.name)]),
-    [['Applications déployées', ['test', 'carto']], ['Outils du lab', ['storage', 'lab-admin']]]);
+    [['Projets de déploiement', ['test', 'carto']], ['Outils de dev', ['storage', 'lab-admin']]]);
   // Section vide non rendue.
-  assert.deepEqual(projectSections([p('test', 'application')]).map(s => s.title), ['Applications déployées']);
-  assert.deepEqual(projectSections([p('storage', 'outil')]).map(s => s.title), ['Outils du lab']);
+  assert.deepEqual(projectSections([p('test', 'application')]).map(s => s.title), ['Projets de déploiement']);
+  assert.deepEqual(projectSections([p('storage', 'outil')]).map(s => s.title), ['Outils de dev']);
   // Nature inconnue ou absente au milieu des autres : jamais perdue.
   const odd = projectSections([p('test', 'application'), p('x', 'nature-future'), p('y')]);
-  assert.deepEqual(odd.map(s => [s.title, s.projects.length]), [['Applications déployées', 1], ['Autres', 2]]);
+  assert.deepEqual(odd.map(s => [s.title, s.projects.length]), [['Projets de déploiement', 1], ['Autres', 2]]);
   assert.equal(odd.reduce((n, s) => n + s.projects.length, 0), 3);
 });

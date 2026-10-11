@@ -1,5 +1,5 @@
 /**
- * Client de l'API web du moteur du lab (`/mcp/api`, contrat multi-dev I5 v6).
+ * Client de l'API web du moteur du lab (`/mcp/api`, contrat multi-dev I5).
  *
  * SEUL endroit de lab-admin qui connaît les routes et les formes du moteur.
  * Description faisant foi : `lab-mcp/API.md` — chaque type ci-dessous en est la
@@ -511,10 +511,8 @@ export class EngineClient {
   pgadminOpen(): Observable<PgadminOpened> { return this.call('POST', '/me/pgadmin'); }
   pgadminClose(): Observable<{ closed: boolean }> { return this.call('DELETE', '/me/pgadmin'); }
 
-  // I10 — profils SMTP. Lecture d'un autre par `?as=` (superutilisateur) ; toute écriture est pour soi.
-  smtpList(asUid?: string | null): Observable<{ profiles: SmtpProfile[] }> {
-    return this.call('GET', '/me/smtp', undefined, EngineClient.as(asUid));
-  }
+  // I10 — profils SMTP : toujours les siens (le `?as=` de lecture d'I10 n'a pas d'usage ici).
+  smtpList(): Observable<{ profiles: SmtpProfile[] }> { return this.call('GET', '/me/smtp'); }
   smtpCreate(profile: SmtpInput): Observable<SmtpProfile> { return this.call('POST', '/me/smtp', profile); }
   smtpUpdate(id: string, changes: Partial<SmtpInput>): Observable<SmtpProfile> {
     return this.call('PUT', `/me/smtp/${seg(id)}`, changes);
@@ -596,7 +594,8 @@ export interface ProjectSection { key: 'application' | 'outil' | 'autre' | 'tous
  * Sections de la liste des projets, d'après `kind` (I6 v10).
  *  - aucun projet ne porte `kind` (moteur qui ne le rend pas encore) : UNE
  *    section sans intertitre, comme avant ;
- *  - sinon « Applications déployées » puis « Outils du lab » ; une section
+ *  - sinon « Projets de déploiement » puis « Outils de dev » (les mots du
+ *    propriétaire) ; une section
  *    vide n'est pas rendue ; un projet sans `kind` ou d'une nature inconnue
  *    n'est jamais perdu : il va dans « Autres ».
  * L'ordre des projets à l'intérieur d'une section est celui du moteur.
@@ -609,16 +608,20 @@ export function projectSections(projects: Project[]): ProjectSection[] {
   const tools = projects.filter(p => p.kind === 'outil');
   const others = projects.filter(p => p.kind !== 'application' && p.kind !== 'outil');
   const sections: ProjectSection[] = [
-    { key: 'application', title: 'Applications déployées', projects: apps },
-    { key: 'outil', title: 'Outils du lab', projects: tools },
+    { key: 'application', title: 'Projets de déploiement', projects: apps },
+    { key: 'outil', title: 'Outils de dev', projects: tools },
     { key: 'autre', title: 'Autres', projects: others },
   ];
   return sections.filter(s => s.projects.length > 0);
 }
 
-/** Les chiffres de l'accueil. `behind` vaut null si le moteur ne rend pas encore `github`. */
+/**
+ * Les chiffres de l'accueil. `behind` vaut null (« — ») seulement quand il y a
+ * des projets et que le moteur ne rend `github` pour aucun : sans projet, le
+ * compte est connu, c'est zéro.
+ */
 export function projectCounts(projects: Project[]): { total: number; running: number; behind: number | null } {
-  const known = projects.some(p => !!p.github);
+  const known = projects.length === 0 || projects.some(p => !!p.github);
   return {
     total: projects.length,
     running: projects.filter(p => p.state === 'running').length,

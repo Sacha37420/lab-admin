@@ -45,8 +45,8 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'HOST':     config('DB_HOST',     default='postgres'),
         'PORT':     config('DB_PORT',     default=5432, cast=int),
-        'NAME':     config('DB_NAME',     default='devdb'),
-        'USER':     config('DB_USER',     default='devuser'),
+        'NAME':     config('DB_NAME',     default='lab'),
+        'USER':     config('DB_USER',     default='lab'),
         'PASSWORD': config('DB_PASSWORD', default='devpassword'),
         'OPTIONS': {
             # Isole les tables dans le schéma dédié à cette application.
@@ -54,15 +54,15 @@ DATABASES = {
         },
     },
     # Lecture seule du catalogue app-builder (mêmes host/user/password — même
-    # instance devdb, rôle devuser commun à toutes les apps — seul le
+    # base `lab`, rôle `lab` : celle des services du cadriciel — seul le
     # search_path change). Voir api/models_appbuilder.py : jamais d'écriture,
     # jamais de migration sur cet alias (managed = False sur tous ses modèles).
     'app_builder': {
         'ENGINE': 'django.db.backends.postgresql',
         'HOST':     config('DB_HOST',     default='postgres'),
         'PORT':     config('DB_PORT',     default=5432, cast=int),
-        'NAME':     config('DB_NAME',     default='devdb'),
-        'USER':     config('DB_USER',     default='devuser'),
+        'NAME':     config('DB_NAME',     default='lab'),
+        'USER':     config('DB_USER',     default='lab'),
         'PASSWORD': config('DB_PASSWORD', default='devpassword'),
         'OPTIONS': {
             'options': '-c search_path=app_builder,public',
@@ -109,7 +109,7 @@ REST_FRAMEWORK = {
     # désormais deux groupes à sa porte (`admins`, `developers`), mais tout ce
     # qui existait avant reste réservé à `admins`. Une vue qui ne déclare rien
     # est donc une vue d'admin. Depuis le contrat v5 lab-admin n'a PLUS aucune
-    # vue ouverte aux non-admins : l'interface des développeurs (« Mes projets »)
+    # vue ouverte aux non-admins : l'interface des développeurs (Accueil, Services, Projets)
     # appelle directement l'API web du moteur (/mcp/api/…), pas ce backend.
     # Ne jamais remettre IsAuthenticated ici : POST /api/lab-users/ (création de
     # comptes via le compte de service manage-users) s'ouvrirait à tout membre

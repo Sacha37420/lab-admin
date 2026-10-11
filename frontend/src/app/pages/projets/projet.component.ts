@@ -10,11 +10,13 @@ import {
 } from '../../core/engine.client';
 import { preopenTab, sendTab } from '../../core/tool-tab';
 import { JobSuiviComponent } from '../../shared/job-suivi/job-suivi.component';
+import { ConfirmDialogComponent } from '../../shared/confirm-dialog/confirm-dialog.component';
+import { DATE_FORMAT, shortSha } from '../../core/format';
 import { MaBaseComponent } from '../../shared/ma-base/ma-base.component';
 import { EmailProjetComponent } from '../../shared/email/email-projet.component';
 
 /**
- * Page d'un projet (`/projets/<app>`, contrat multi-dev I6 v6) : tout ce qu'un
+ * Page d'un projet (`/projets/<app>`, contrat multi-dev I6) : tout ce qu'un
  * développeur fait sur son app SANS IA — déployer, lire les journaux, régler
  * les variables, lancer les tests, ouvrir un ticket, ouvrir l'éditeur, interroger
  * sa base. Chaque action est un appel au moteur ; c'est lui qui vérifie que le
@@ -23,7 +25,7 @@ import { EmailProjetComponent } from '../../shared/email/email-projet.component'
 @Component({
   selector: 'app-projet',
   standalone: true,
-  imports: [FormsModule, RouterLink, DatePipe, JobSuiviComponent, MaBaseComponent, EmailProjetComponent],
+  imports: [FormsModule, RouterLink, DatePipe, JobSuiviComponent, MaBaseComponent, EmailProjetComponent, ConfirmDialogComponent],
   templateUrl: './projet.component.html',
 })
 export class ProjetComponent implements OnInit {
@@ -34,6 +36,8 @@ export class ProjetComponent implements OnInit {
   readonly stateLabel = stateLabel;
   readonly verdictLabel = verdictLabel;
   readonly repoPage = repoPage;
+  readonly dateFormat = DATE_FORMAT;
+  readonly shortSha = shortSha;
 
   app = '';
   project = signal<ProjectDetail | null>(null);
@@ -91,7 +95,8 @@ export class ProjetComponent implements OnInit {
 
   // Espace de travail
   wsBusy = signal(false);
-  wsOpened = signal<WorkspaceOpened | null>(null);
+  /** L'état de l'espace ouvert — sans son URL à ticket, qui n'est ni gardée ni affichée. */
+  wsOpened = signal<WorkspaceOpened['workspace'] | null>(null);
   wsError = signal<EngineError | null>(null);
   wsNotice = signal('');
 
@@ -224,9 +229,18 @@ export class ProjetComponent implements OnInit {
     });
   }
 
-  removeVar(v: EnvVar): void {
+  /** Confirmation dans un dialogue de l'app (pas de boîte native), puis suppression. */
+  askRemoveVar(v: EnvVar, origin: HTMLElement, confirm: ConfirmDialogComponent, fallback: HTMLElement): void {
     if (v.managed || this.envBusy()) return;
-    if (!window.confirm(`Supprimer la variable ${v.key} ?`)) return;
+    confirm.ask({
+      title: 'Supprimer cette variable ?',
+      text: `La variable ${v.key} sera retirée de l'application au prochain déploiement.`,
+      confirmLabel: 'Supprimer', danger: true,
+    }, origin, () => this.removeVar(v), fallback);
+  }
+
+  private removeVar(v: EnvVar): void {
+    if (v.managed || this.envBusy()) return;
     this.envBusy.set(true);
     this.envError.set(''); this.envNotice.set('');
     this.engine.envUnset(this.app, v.key).subscribe({
@@ -306,7 +320,7 @@ export class ProjetComponent implements OnInit {
           this.wsNotice.set("Le moteur a rendu une adresse d'éditeur inattendue : elle n'a pas été ouverte.");
           return;
         }
-        this.wsOpened.set(opened);
+        this.wsOpened.set(opened.workspace);
         this.project.update(p => p ? { ...p, workspace: { open: true } } : p);
         if (!sendTab(tab, opened.url)) {
           this.wsNotice.set('Le navigateur a bloqué le nouvel onglet : autorisez les fenêtres surgissantes pour ce site, puis cliquez de nouveau.');

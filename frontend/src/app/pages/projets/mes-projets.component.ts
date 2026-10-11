@@ -9,10 +9,11 @@ import { KeycloakService } from '../../core/keycloak.service';
 import {
   APP_NAME_RE, DevSummary, EngineError, Group, Job, Me, NameCheck, Profile, Project, ProjectType,
   githubGapLabel, isWorkspaceUrl, projectSections,
-  profileOf, stateLabel, toEngineError, verdictLabel,
+  profileOf, stateLabel, toEngineError,
 } from '../../core/engine.client';
 import { JobSuiviComponent } from '../../shared/job-suivi/job-suivi.component';
 import { preopenTab, sendTab } from '../../core/tool-tab';
+import { DATE_FORMAT, shortSha } from '../../core/format';
 import { DashboardComponent } from '../dashboard/dashboard.component';
 
 /**
@@ -43,7 +44,8 @@ export class MesProjetsComponent implements OnInit {
   protected kc = inject(KeycloakService);
 
   readonly stateLabel = stateLabel;
-  readonly verdictLabel = verdictLabel;
+  readonly dateFormat = DATE_FORMAT;
+  readonly shortSha = shortSha;
 
   loading = signal(true);
   /** Erreur bloquante (moteur injoignable…). */
@@ -254,7 +256,25 @@ export class MesProjetsComponent implements OnInit {
     this.selectedGroups.update(list => checked ? [...new Set([...list, name])] : list.filter(g => g !== name));
   }
 
+  /** Où relier GitHub : le lien du lab pour ce compte, sinon l'accueil d'OAuth Hub. */
+  githubUrl = computed(() => {
+    const me = this.self();
+    return me?.remaining.find(s => s.step === 'link_github')?.url ?? me?.github?.connect_url ?? me?.oauth_hub_url ?? this.engine.oauthHubUrl;
+  });
+  recheckingGithub = signal(false);
+
+  /** Après le passage dans OAuth Hub : relire l'état de la liaison. */
+  recheckGithub(): void {
+    this.recheckingGithub.set(true);
+    this.engine.me().subscribe({
+      next: me => { this.self.set(me); if (!this.viewingOther()) this.shown.set(me); this.recheckingGithub.set(false); },
+      error: () => this.recheckingGithub.set(false),
+    });
+  }
+
   get canCreate(): boolean {
+    // Sans GitHub relié, le formulaire n'est pas rendu ; la garde reste ici pour le clavier.
+    if (this.self()?.github_linked === false) return false;
     return !this.creating() && !this.createJobId() && !!this.nameCheck()?.ok && !this.nameChecking()
       && this.selectedGroups().length > 0;
   }

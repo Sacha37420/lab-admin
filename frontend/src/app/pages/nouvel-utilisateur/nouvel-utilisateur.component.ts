@@ -1,6 +1,7 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { Component, HostListener, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
+import { apiUrl } from '../../core/env';
 
 interface LabGroup { id: string; name: string; required_by: string[] }
 interface AppRequirement { name: string; required_groups: string[] }
@@ -17,7 +18,6 @@ interface CreateUserResult {
   email_error: string | null;
 }
 
-interface EnvWindow { __env?: { apiUrl?: string } }
 
 @Component({
   selector: 'app-nouvel-utilisateur',
@@ -26,12 +26,10 @@ interface EnvWindow { __env?: { apiUrl?: string } }
   templateUrl: './nouvel-utilisateur.component.html',
   styleUrl: './nouvel-utilisateur.component.scss',
 })
-export class NouvelUtilisateurComponent implements OnInit {
+export class NouvelUtilisateurComponent implements OnInit, OnDestroy {
   private http = inject(HttpClient);
 
-  private get apiUrl(): string {
-    return (window as unknown as EnvWindow).__env?.apiUrl ?? 'http://localhost:8083';
-  }
+  private get apiUrl(): string { return apiUrl(); }
 
   // ── Groupes ──────────────────────────────────────────────────────────────
   groups     = signal<LabGroup[]>([]);
@@ -49,7 +47,43 @@ export class NouvelUtilisateurComponent implements OnInit {
   // ── Soumission ───────────────────────────────────────────────────────────
   submitting = signal(false);
   submitError = signal('');
-  result = signal<CreateUserResult | null>(null);
+  /** Le récapitulatif — SANS le mot de passe, tenu à part ci-dessous. */
+  result = signal<Omit<CreateUserResult, 'password'> | null>(null);
+
+  // ── Mot de passe du compte créé : même politique que « Ma base » ──────────
+  // Gardé dans ce composant seulement, masqué par défaut, affiché à la demande,
+  // remasqué après 2 min et au changement d'onglet, effacé en quittant la page.
+  // Jamais dans le stockage du navigateur ni dans une URL.
+  password = signal('');
+  shown = signal(false);
+  copied = signal(false);
+  private hideTimer?: ReturnType<typeof setTimeout>;
+
+  show(): void {
+    if (!this.password()) return;
+    this.shown.set(true);
+    clearTimeout(this.hideTimer);
+    this.hideTimer = setTimeout(() => this.hide(), 120_000);
+  }
+
+  hide(): void {
+    clearTimeout(this.hideTimer);
+    this.shown.set(false);
+  }
+
+  private forget(): void {
+    this.hide();
+    this.password.set('');
+    this.copied.set(false);
+  }
+
+  @HostListener('document:visibilitychange')
+  onVisibility(): void { if (document.hidden) this.hide(); }
+
+  @HostListener('window:pagehide')
+  onPageHide(): void { this.forget(); }
+
+  ngOnDestroy(): void { this.forget(); }
 
   formValid = computed(() =>
     this.username().trim().length > 0 &&
@@ -95,7 +129,10 @@ export class NouvelUtilisateurComponent implements OnInit {
       groups: [...this.selectedGroups()],
     }).subscribe({
       next: res => {
-        this.result.set(res);
+        const { password, ...summary } = res;
+        this.password.set(password ?? '');
+        this.shown.set(false);
+        this.result.set(summary);
         this.submitting.set(false);
       },
       error: (err: HttpErrorResponse) => {
@@ -111,12 +148,18 @@ export class NouvelUtilisateurComponent implements OnInit {
     this.lastName.set('');
     this.email.set('');
     this.selectedGroups.set(new Set());
+    this.forget();
     this.result.set(null);
     this.submitError.set('');
   }
 
+  /** Copie sans afficher. */
   copyPassword(): void {
-    const pwd = this.result()?.password;
-    if (pwd) navigator.clipboard.writeText(pwd);
+    const pwd = this.password();
+    if (!pwd) return;
+    navigator.clipboard?.writeText(pwd).then(() => {
+      this.copied.set(true);
+      setTimeout(() => this.copied.set(false), 2000);
+    }, () => {});
   }
 }

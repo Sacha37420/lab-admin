@@ -36,13 +36,11 @@ export const routes: Routes = [
   //    au groupe `admins` (bloc de conception, cartes d'administration).
   { path: 'outils', pathMatch: 'full', redirectTo: 'services' },
   { path: 'conception', pathMatch: 'full', redirectTo: 'projets' },
+  // La page « Code » de lab-admin (route Angular) est supprimée : ses commandes décrivaient un
+  // lab qui n'existe plus. Ne pas confondre avec le service /code du lab (code-server), intact,
+  // dont le lien est sur Services (« Éditeur du lab », admins).
+  { path: 'code', pathMatch: 'full', redirectTo: 'services' },
   // ── Administration : tout ce qui suit est réservé au groupe `admins` ────────
-  {
-    path: 'code',
-    loadComponent: () =>
-      import('./pages/code-editor/code-editor.component').then(m => m.CodeEditorComponent),
-    canActivate: [adminGuard],
-  },
   {
     path: 'apps-hebergees',
     loadComponent: () =>

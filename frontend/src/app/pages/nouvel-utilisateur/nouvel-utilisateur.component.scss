@@ -79,3 +79,6 @@
   color: var(--accent-deep);
   word-break: break-all;
 }
+
+.password-hidden { font-size: var(--text-sm); color: var(--text-mute); font-style: italic; }
+.password-hint { font-size: var(--text-sm); color: var(--text-mute); line-height: 1.5; }

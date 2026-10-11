@@ -144,82 +144,6 @@ code, pre, .mono { font-family: var(--font-mono); }
   p { color: var(--text-mute); font-size: var(--text-base); }
 }
 
-/* ─── Steps (shared new-app-guide) ──────────────────────────────────────── */
-.steps { display: flex; flex-direction: column; gap: var(--space-5); }
-
-.step {
-  display: flex;
-  gap: var(--space-4);
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: var(--space-5);
-  transition: border-color 0.2s;
-
-  &:hover { border-color: var(--accent); }
-}
-
-.step-number {
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-full);
-  background: var(--accent-tint);
-  border: 1px solid var(--accent);
-  color: var(--accent);
-  font-weight: 700;
-  font-size: var(--text-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 2px;
-}
-
-.step-content {
-  flex: 1;
-  min-width: 0;
-
-  h2 { font-size: var(--text-lg); font-weight: 600; color: var(--text); margin-bottom: var(--space-3); }
-  p { color: var(--text-mute); margin-bottom: var(--space-3); font-size: var(--text-sm); }
-
-  code {
-    background: var(--accent-tint);
-    color: var(--accent-deep);
-    padding: 0.1em 0.4em;
-    border-radius: 4px;
-    font-size: 0.88em;
-    font-family: var(--font-mono);
-  }
-
-  a { color: var(--accent); text-decoration: none; &:hover { text-decoration: underline; } }
-}
-
-/* ─── Code blocks ────────────────────────────────────────────────────── */
-.code-block {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-4) var(--space-5);
-  overflow-x: auto;
-  margin: var(--space-3) 0;
-  font-size: var(--text-sm);
-  line-height: 1.7;
-  color: var(--text);
-  font-family: var(--font-mono);
-  white-space: pre;
-  display: block;
-}
-
-.code-label {
-  font-size: var(--text-xs);
-  color: var(--accent);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  margin-top: var(--space-4);
-  margin-bottom: var(--space-2);
-}
-
 /* ─── Note / warning blocks ──────────────────────────────────────────── */
 .note {
   background: var(--accent-tint);
@@ -474,7 +398,7 @@ code, pre, .mono { font-family: var(--font-mono); }
 .pj-form { display: flex; flex-direction: column; gap: var(--space-3); }
 .pj-fld {
   display: flex; flex-direction: column; gap: var(--space-2); flex: 1 1 200px; min-width: 0;
-  > span { font-size: var(--text-sm); font-weight: 600; color: var(--text-mute); }
+  > span, > legend { font-size: var(--text-sm); font-weight: 600; color: var(--text-mute); padding: 0; margin-bottom: var(--space-2); }
   input[type='text'], input[type='password'], select, textarea {
     width: 100%; border-radius: var(--radius-sm); border: 1px solid var(--border);
     background: var(--bg); color: var(--text); outline: none;
@@ -535,7 +459,6 @@ fieldset.pj-fld { border: none; padding: 0; margin: 0; }
 .pj-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--text-sm); color: var(--text); }
 
 /* ─── Trois pages (accueil, services, projets) ─────────────────────────── */
-.pj-lead { margin-bottom: var(--space-2); strong { color: var(--text); } }
 
 .pj-figures { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr)); }
 .pj-figure {

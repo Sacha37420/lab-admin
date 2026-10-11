@@ -36,11 +36,28 @@
               }
             }
           </div>
-          <div class="svc-desc">Relie votre compte GitHub au lab — nécessaire pour créer un projet.</div>
+          <div class="svc-desc">{{ me()?.eligible ? 'Relie votre compte GitHub au lab — nécessaire pour créer un projet.' : 'Relie des comptes extérieurs (GitHub…) à votre compte du lab.' }}</div>
           <div class="svc-url"><a class="svc-link" [href]="oauthHubUrl()" target="_blank" rel="noopener">Ouvrir ↗</a></div>
         </div>
       </div>
     </div>
+
+    <!-- ── Développeur pas encore initialisé : dire où cela se fait ───────── -->
+    @if (needsInit()) {
+      <div class="env-card">
+        <div class="env-card-header">
+          <h2>Vos services de développeur</h2>
+          <span class="env-path">pas encore prêts</span>
+        </div>
+        <div class="services-grid svc-wide">
+          <div class="service-card">
+            <div class="svc-name">Votre espace n'est pas encore prêt</div>
+            <div class="svc-desc">Votre base de données, vos comptes d'envoi d'email et l'accès pour vos assistants apparaîtront ici. La préparation se fait toute seule sur la page d'accueil, en quelques secondes.</div>
+            <div class="svc-url"><a class="svc-link" routerLink="/">Aller à l'accueil</a></div>
+          </div>
+        </div>
+      </div>
+    }
 
     <!-- ── Développeur : sa base, son pgAdmin ─────────────────────────────── -->
     @if (isDev()) {
@@ -108,7 +125,7 @@
           @if (codeUrl) {
             <div class="service-card">
               <div class="svc-name">Éditeur du lab</div>
-              <div class="svc-desc">Le code du lab lui-même, pas celui d'un projet.</div>
+              <div class="svc-desc">Le code du lab lui-même, pas celui d'un projet. Réservé aux membres du groupe admins.</div>
               <div class="svc-url"><a class="svc-link" [href]="codeUrl" target="_blank" rel="noopener">Ouvrir ↗</a></div>
             </div>
           }

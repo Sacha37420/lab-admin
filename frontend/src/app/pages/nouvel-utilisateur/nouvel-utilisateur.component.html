@@ -27,19 +27,33 @@
 
         @if (res.email_sent) {
           <div class="note" style="border-left-color:var(--success); background:var(--success-tint)">
-            ✓ Email envoyé à {{ res.email }}.
+            ✓ Le mot de passe a été envoyé par email à {{ res.email }}. Vous n'avez pas besoin de l'afficher.
           </div>
         } @else {
           <div class="note" style="border-left-color:var(--danger); background:var(--danger-tint)">
-            ⚠ Email non envoyé ({{ res.email_error }}) — communiquez le mot de passe manuellement.
+            ⚠ Email non envoyé ({{ res.email_error }}) — communiquez le mot de passe vous-même, par un canal sûr.
           </div>
         }
 
         <div class="password-row">
           <span class="password-label">Mot de passe</span>
-          <code class="password-value">{{ res.password }}</code>
-          <button type="button" class="btn-secondary" (click)="copyPassword()">Copier</button>
+          @if (shown()) {
+            <code class="password-value">{{ password() }}</code>
+            <button type="button" class="btn-secondary" (click)="hide()">Masquer</button>
+          } @else if (password()) {
+            <span class="password-hidden">masqué</span>
+            <button type="button" class="btn-secondary" (click)="show()">Afficher</button>
+          } @else {
+            <span class="password-hidden">effacé de cette page</span>
+          }
+          @if (password()) {
+            <button type="button" class="btn-secondary" (click)="copyPassword()">{{ copied() ? 'Copié ✓' : 'Copier' }}</button>
+          }
         </div>
+        <p class="password-hint">
+          Il n'est pas conservé par le lab et ne pourra plus être réaffiché une fois cette page quittée.
+          Il se masque de lui-même au bout de 2 minutes et quand vous changez d'onglet.
+        </p>
 
         <button type="button" class="btn-primary" (click)="reset()">Créer un autre utilisateur</button>
       </div>

@@ -94,11 +94,7 @@
     } @else if (profile() === 'none') {
       <div class="pj-card">
         <h2>Bonjour {{ me()?.username }}</h2>
-        @if (me()?.ineligible_reason === 'invalid_uid') {
-          <p class="pj-hint">Votre identifiant ne peut pas servir de compte développeur (lettres minuscules et chiffres uniquement). Vous pouvez consulter les services, pas créer de projet.</p>
-        } @else {
-          <p class="pj-hint">Votre compte n'est pas encore développeur sur le lab. Demandez à l'administrateur de vous ajouter au groupe <code>developers</code>.</p>
-        }
+        <p class="pj-hint">Votre identifiant ne peut pas servir de compte développeur sur le lab (lettres minuscules et chiffres uniquement). Vous pouvez consulter les services, pas créer de projet.</p>
       </div>
     } @else {
       <!-- admin qui n'est pas développeur -->

@@ -53,7 +53,7 @@ services:
     volumes:
       # Registre des ports + .keycloak-client-opts de chaque app — non secrets
       # (le code ne doit JAMAIS lire un .env d'app depuis /mnt/dev, seulement
-      # .keycloak-client-opts ; voir api/infrastructure.py et api/lab_groups.py).
+      # .keycloak-client-opts ; voir api/infra_info.py et api/lab_groups.py).
       - ${HOST_DEV_ROOT}/.ports:/mnt/ports:ro
       - ${HOST_DEV_ROOT}:/mnt/dev:ro
     labels:
@@ -74,7 +74,7 @@ services:
         condition: service_healthy
     networks:
       - sso-net   # pour atteindre lab-runner (réseau sso-net)
-      - dev-net   # pour écrire dans devdb (schéma lab_admin)
+      - dev-net   # pour écrire dans la base `lab` (schéma lab_admin)
       - lab-admin-net
 
   frontend:

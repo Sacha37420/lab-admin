@@ -1,16 +1,7 @@
 import { Injectable } from '@angular/core';
 import Keycloak from 'keycloak-js';
 import { loginRedirectUri } from './redirect-uri';
-
-interface EnvWindow {
-  __env?: {
-    keycloakUrl?:      string;
-    keycloakRealm?:    string;
-    keycloakClientId?: string;
-    appUrl?:           string;
-    apiUrl?:           string;
-  };
-}
+import { labEnv } from './env';
 
 @Injectable({ providedIn: 'root' })
 export class KeycloakService {
@@ -29,7 +20,7 @@ export class KeycloakService {
    * La promesse ne se résout qu'une fois l'utilisateur authentifié.
    */
   async init(): Promise<boolean> {
-    const env = (window as unknown as EnvWindow).__env ?? {};
+    const env = labEnv();
 
     this.baseUrl = (env.keycloakUrl ?? (window.location.protocol + '//' + window.location.hostname + ':8080')).replace(/\/+$/, '');
     this.realm = env.keycloakRealm ?? 'ssolab';
@@ -64,9 +55,10 @@ export class KeycloakService {
 
   /**
    * Administrateur du lab (groupe `admins`). Depuis l'ouverture de lab-admin
-   * au groupe `developers`, être entré ne suffit plus : tout sauf la page
-   * d'accueil reste réservé aux admins — le backend applique la
-   * même règle par vue (api/permissions.py), ceci n'est que l'affichage.
+   * au groupe `developers`, être entré ne suffit plus : les pages
+   * d'administration et les blocs d'administration des pages communes restent
+   * réservés aux admins — le backend applique la même règle par vue
+   * (api/permissions.py), ceci n'est que l'affichage.
    */
   get isAdmin(): boolean {
     return this.groups.includes('admins');

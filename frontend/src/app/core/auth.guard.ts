@@ -5,7 +5,7 @@ import { KeycloakService } from './keycloak.service';
 /**
  * Guard : redirige vers /forbidden si l'utilisateur n'a pas le groupe 'admins'.
  * L'utilisateur est forcément authentifié ici (Keycloak init avec login-required).
- * Reste posé sur TOUTES les routes sauf l'accueil.
+ * Posé sur chaque page d'administration (Apps du lab, Nouvel utilisateur, Debug).
  */
 export const adminGuard: CanActivateFn = () => {
   const kc = inject(KeycloakService);
@@ -14,9 +14,9 @@ export const adminGuard: CanActivateFn = () => {
 };
 
 /**
- * Guard de l'accueil et des pages de projet (`/projets/<app>`) : `admins` ou `developers` — les deux
- * groupes que Keycloak et l'API laissent entrer (contrat multi-dev, I6). Un
- * non-admin n'y voit que « Mes projets » (jamais l'accueil d'administration).
+ * Guard des pages de tout le monde (Accueil, Services, Projets, page d'un projet) : `admins` ou
+ * `developers` — les deux groupes que Keycloak laisse entrer (contrat multi-dev, I6). Ce que
+ * chaque page montre d'administration y reste conditionné au groupe `admins`.
  */
 export const labGuard: CanActivateFn = () => {
   const kc = inject(KeycloakService);

@@ -1,69 +1,43 @@
-<div class="dashboard">
-
-  <!-- Bloc « Conception », posé en bas de la page Projets pour les admins (v10). -->
-  @if (kc.isAdmin) {
-    <div class="hero">
-      <h2 class="hero-title">Conception — Dev Lab</h2>
-      <p class="hero-sub">Concevez, scaffoldez et déployez vos applications depuis un seul endroit.</p>
-      <div class="hero-actions">
-        <a [href]="appBuilderUrl" target="_blank" class="btn-primary">
-          &#9965; Ouvrir l'App Builder
-        </a>
-        <a [href]="codeServerUrl" target="_blank" class="btn-secondary">
-          &lt;/&gt; Ouvrir l'Éditeur
-        </a>
-      </div>
+<!-- Bloc « Conception » de la page Projets — admins seulement : les applications dessinées dans
+     App Builder. La création et le déploiement se font plus haut, par « Nouveau projet ». -->
+@if (kc.isAdmin) {
+  <section class="dashboard" aria-labelledby="conception-title">
+    <div class="section-header">
+      <h2 id="conception-title">Conception (App Builder)</h2>
+      <a [href]="appBuilderUrl" target="_blank" rel="noopener" class="link-more">Ouvrir App Builder ↗</a>
     </div>
+    <p class="section-intro">Les applications dessinées dans App Builder : modèles de données, API, pages.</p>
 
-    <section class="section">
-      <div class="section-header">
-        <h2>Applications conçues</h2>
-        <a [href]="appBuilderUrl" target="_blank" class="link-more">Voir dans l'App Builder ↗</a>
+    @if (loading()) {
+      <div class="loading-row">Chargement…</div>
+    } @else if (error()) {
+      <div class="error-row">{{ error() }}</div>
+    } @else if (specs().length === 0) {
+      <div class="empty-row">
+        Aucune application conçue — <a [href]="appBuilderUrl" target="_blank" rel="noopener">créez-en une dans App Builder ↗</a>.
       </div>
-
-      @if (loading()) {
-        <div class="loading-row">Chargement…</div>
-      } @else if (error()) {
-        <div class="error-row">{{ error() }}</div>
-      } @else if (specs().length === 0) {
-        <div class="empty-row">
-          Aucune application — <a [href]="appBuilderUrl" target="_blank">créez-en une dans l'App Builder</a>.
-        </div>
-      } @else {
-        <div class="spec-grid">
-          @for (spec of specs(); track spec.id) {
-            <div class="spec-card">
-              <div class="spec-card-head">
-                <span class="spec-name">{{ spec.name }}</span>
-                <span class="spec-time">{{ timeAgo(spec.updated_at) }}</span>
-              </div>
-              @if (spec.description) {
-                <p class="spec-desc">{{ spec.description }}</p>
-              }
-              <div class="spec-meta">
-                <span class="meta-badge">{{ spec.data_models.length }} modèles</span>
-                <span class="meta-badge">{{ spec.endpoint_groups.length }} groupes</span>
-                <span class="meta-badge">{{ spec.pages.length }} pages</span>
-              </div>
-              <div class="spec-actions">
-                <a [href]="appBuilderUrl" target="_blank" class="btn-spec">Voir le spec</a>
-                <a routerLink="/code" class="btn-spec btn-build">Scaffolder ↗</a>
-              </div>
+    } @else {
+      <div class="spec-grid">
+        @for (spec of specs(); track spec.id) {
+          <div class="spec-card">
+            <div class="spec-card-head">
+              <span class="spec-name">{{ spec.name }}</span>
+              <span class="spec-time">modifiée le {{ spec.updated_at | date: dateFormat }}</span>
             </div>
-          }
-        </div>
-      }
-    </section>
-
-    <section class="section">
-      <h2>Workflow recommandé</h2>
-      <ol class="workflow">
-        <li><strong>App Builder</strong> — Concevez le spec (modèles, API, pages) avec l'agent IA</li>
-        <li><strong>Éditeur (code-server)</strong> — Claude Code lit le spec et scaffolde l'app</li>
-        <li><strong>Terminal</strong> — <code>bash new-app.sh</code> + <code>bash setup2.sh mon-app --yes</code></li>
-        <li><strong>Dev</strong> — Itérez dans l'éditeur, Claude Code complète les vues et la logique métier</li>
-      </ol>
-    </section>
-  }
-
-</div>
+            @if (spec.description) {
+              <p class="spec-desc">{{ spec.description }}</p>
+            }
+            <div class="spec-meta">
+              <span class="meta-badge">{{ spec.data_models.length }} modèles</span>
+              <span class="meta-badge">{{ spec.endpoint_groups.length }} groupes</span>
+              <span class="meta-badge">{{ spec.pages.length }} pages</span>
+            </div>
+            <div class="spec-actions">
+              <a [href]="appBuilderUrl" target="_blank" rel="noopener" class="btn-spec">Ouvrir dans App Builder ↗</a>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </section>
+}

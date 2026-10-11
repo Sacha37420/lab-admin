@@ -42,9 +42,9 @@
             </div>
             <div class="svc-url">
               @if (app.frontend_url) {
-                <a [href]="app.frontend_url" target="_blank" rel="noopener">Ouvrir ↗</a>
+                <a class="svc-link" [href]="app.frontend_url" target="_blank" rel="noopener">Ouvrir ↗</a>
               } @else if (app.backend_url) {
-                <a [href]="app.backend_url" target="_blank" rel="noopener">API ↗</a>
+                <a class="svc-link" [href]="app.backend_url" target="_blank" rel="noopener">API ↗</a>
               } @else {
                 <span style="color:var(--text-mute)">—</span>
               }

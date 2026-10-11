@@ -1,6 +1,7 @@
 import { Component, EventEmitter, Input, OnChanges, OnDestroy, Output, inject, signal } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { EngineService } from '../../core/engine.service';
+import { shortSha } from '../../core/format';
 import {
   DeployTests, EngineError, Job, JobTestCase, deployVerdicts, testCases, toEngineError, verdictLabel,
 } from '../../core/engine.client';
@@ -32,7 +33,7 @@ const STATE_LABELS: Record<Job['state'], string> = {
           @if (r.reasons?.length) {
             <ul class="pj-reasons">@for (reason of r.reasons; track $index) { <li>{{ reason }}</li> }</ul>
           }
-          @if (r.sha) { <p class="pj-hint">Commit : <code>{{ r.sha.slice(0, 12) }}</code></p> }
+          @if (r.sha) { <p class="pj-hint">Commit : <code>{{ shortSha(r.sha) }}</code></p> }
           @if (verdicts(j); as v) {
             <p class="pj-hint">
               Tests backend : <strong [class.pj-error]="v.backend === 'ko'">{{ verdict(v.backend) }}</strong>
@@ -104,6 +105,8 @@ export class JobSuiviComponent implements OnChanges, OnDestroy {
   }
 
   ngOnDestroy(): void { this.sub?.unsubscribe(); }
+
+  readonly shortSha = shortSha;
 
   kindLabel(j: Job): string { return KIND_LABELS[j.kind] ?? j.kind; }
   stateLabel(j: Job): string { return STATE_LABELS[j.state] ?? j.state; }
