@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { Observable, firstValueFrom, lastValueFrom, of, throwError, toArray } from 'rxjs';
 import {
   EngineClient, EngineRequest, Job, Me, deployVerdicts, profileOf, repoPage, testCases,
-  toEngineError, projectSections, smtpIsStale, smtpBody, smtpProblems, SMTP_DEFAULT_PORT, githubGapLabel, projectCounts, Project, ENV_KEY_RE, APP_NAME_RE, isPgadminUrl, isWorkspaceUrl, stateLabel, verdictLabel,
+  toEngineError, cloisonnementLabel, envRows, runAllSummary, projectSections, smtpIsStale, smtpBody, smtpProblems, SMTP_DEFAULT_PORT, githubGapLabel, projectCounts, Project, ENV_KEY_RE, APP_NAME_RE, isPgadminUrl, isWorkspaceUrl, stateLabel, verdictLabel,
 } from './engine.client';
 
 function recorder(reply: (req: EngineRequest) => Observable<unknown> = () => of({})) {
@@ -338,4 +338,38 @@ test('I6 v10 : sections de la liste d\'après `kind`', () => {
   const odd = projectSections([p('test', 'application'), p('x', 'nature-future'), p('y')]);
   assert.deepEqual(odd.map(s => [s.title, s.projects.length]), [['Projets de déploiement', 1], ['Autres', 2]]);
   assert.equal(odd.reduce((n, s) => n + s.projects.length, 0), 3);
+});
+
+test('variables d\'environnement : noms seulement, quelle que soit la forme reçue', async () => {
+  const { client, calls } = recorder();
+  await firstValueFrom(client.envGet('mon-app', 'MA_CLE'));
+  assert.deepEqual(calls.pop(), { method: 'GET', path: '/projects/mon-app/env/MA_CLE' });
+  await firstValueFrom(client.envGet('mon-app', '../../me/database-password'));
+  assert.equal(calls.pop()?.path, '/projects/mon-app/env/..%2F..%2Fme%2Fdatabase-password');
+  // Nouvelle forme.
+  assert.deepEqual(envRows([{ key: 'DB_PASSWORD', managed: true, has_value: true }, { key: 'MA_CLE', managed: false, has_value: false }]),
+    [{ key: 'DB_PASSWORD', managed: true, hasValue: true }, { key: 'MA_CLE', managed: false, hasValue: false }]);
+  // Ancienne forme du moteur en service : la valeur est JETÉE, elle n'apparaît dans aucune ligne.
+  const legacy = envRows([{ key: 'MA_CLE', managed: false, value: 'SECRET-EN-CLAIR' }, { key: 'DB_PASSWORD', managed: true, value: null }]);
+  assert.deepEqual(legacy, [{ key: 'MA_CLE', managed: false, hasValue: null }, { key: 'DB_PASSWORD', managed: true, hasValue: null }]);
+  assert.equal(JSON.stringify(legacy).includes('SECRET-EN-CLAIR'), false);
+  // Réponses abîmées : rien, jamais d'exception.
+  for (const bad of [undefined, null, 'x', {}, [null, 3, {}, { key: '' }, { key: 7 }]]) assert.deepEqual(envRows(bad), []);
+  assert.equal(toEngineError({ status: 403, error: { error: 'managed_key', detail: 'Clé gérée par le lab.' } }).code, 'managed_key');
+});
+
+test('cloisonnement : verdicts, et « Tout tester »', async () => {
+  const { client, calls } = recorder();
+  await firstValueFrom(client.runAllTests());
+  assert.deepEqual(calls.pop(), { method: 'POST', path: '/tests/run-all' });
+  assert.deepEqual(cloisonnementLabel('ok'), { label: 'cloisonnement vérifié', tone: 'ok' });
+  assert.equal(cloisonnementLabel('ko').tone, 'ko');
+  // « absent » = aucun test trouvé : jamais un succès. Idem pour l'inconnu.
+  for (const v of ['absent', 'non-lancé', 'valeur-future', '', null, undefined]) assert.notEqual(cloisonnementLabel(v).tone, 'ok');
+  assert.deepEqual(runAllSummary([{ verdict: 'ok' }, { verdict: 'ok' }]), { ok: 2, ko: 0, absent: 0, other: 0, allOk: true });
+  assert.equal(runAllSummary([{ verdict: 'ok' }, { verdict: 'absent' }]).allOk, false);
+  assert.equal(runAllSummary([{ verdict: 'ok' }, { verdict: 'ko' }]).allOk, false);
+  assert.equal(runAllSummary([]).allOk, false);              // rien de testé n'est pas « tout est bon »
+  assert.equal(runAllSummary(undefined).allOk, false);
+  assert.deepEqual(runAllSummary([{ verdict: 'non-lancé' }, { verdict: 'x' }]), { ok: 0, ko: 0, absent: 0, other: 2, allOk: false });
 });

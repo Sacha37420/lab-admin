@@ -24,7 +24,9 @@ export type EngineErrorCode =
   // I9 (contrat v7)
   | 'pg_trust_enabled' | 'pgadmin_limit'
   // I10 (contrat v9)
-  | 'smtp_in_use' | 'smtp_error' | 'rate_limited';
+  | 'smtp_in_use' | 'smtp_error' | 'rate_limited'
+  // lecture d'une variable d'environnement gérée par le lab
+  | 'managed_key';
 
 /**
  * Erreur normalisée. `code` vaut un `EngineErrorCode`, ou l'un des deux codes
@@ -177,7 +179,18 @@ export interface GithubGap {
 /** Nature d'un projet (I5 v10) : app déployée (`deploiement/`) ou service du cadriciel (racine). */
 export type ProjectKind = 'application' | 'outil';
 
+export type CloisonnementVerdict = TestVerdict;
+export interface CloisonnementCase { title: string; status: string; }
+/** Dernier lancement du test de cloisonnement connu du moteur, quelle qu'en soit l'origine. */
+export interface CloisonnementResult { verdict: CloisonnementVerdict; at: string | null; cases?: CloisonnementCase[] | null; }
+
 export interface Project {
+  /** L'app figure dans la vitrine publique. Absent tant que le moteur ne le rend pas. */
+  showcased?: boolean;
+  /** Sa description de vitrine. */
+  description?: string | null;
+  /** Dernier verdict de cloisonnement. Absent tant que le moteur ne le rend pas. */
+  tests?: { cloisonnement?: CloisonnementResult | null } | null;
   /** Absent tant que le moteur en service ne le rend pas : la liste reste alors d'un seul tenant. */
   kind?: ProjectKind;
   /** Absent tant que le moteur en service ne le rend pas : à tolérer (« — »). */
@@ -236,7 +249,7 @@ export interface NameCheck { ok: boolean; reasons: string[]; }
 
 // ── §3.3 – §3.6 ───────────────────────────────────────────────────────────────
 
-export type JobKind = 'create' | 'deploy' | 'tests';
+export type JobKind = 'create' | 'deploy' | 'tests' | 'tests_all';
 export type JobState = 'queued' | 'running' | 'succeeded' | 'failed';
 export interface JobTicket { job_id: string; kind: JobKind; app: string; state: JobState; jobs_ahead: number; }
 
@@ -245,7 +258,34 @@ export interface Commits { app: string; repository: string; branch: string; comm
 
 export interface Logs { app: string; service: string | null; tail: number; truncated: boolean; lines: string[]; }
 
-export interface EnvVar { key: string; managed: boolean; value: string | null; }
+/**
+ * Une variable telle que la liste la rend : son NOM, jamais sa valeur.
+ * `has_value` manque dans l'ancienne forme du moteur (qui rendait `value`) :
+ * `envRows()` la jette sans la regarder, et ce type ne déclare volontairement
+ * aucun champ `value` — une valeur ne s'obtient qu'à la demande, par `envGet`.
+ */
+export interface EnvVar { key: string; managed: boolean; has_value?: boolean; }
+
+/** Ligne d'affichage. `hasValue` : null = le moteur ne le dit pas (ancienne forme). */
+export interface EnvRow { key: string; managed: boolean; hasValue: boolean | null; }
+
+/**
+ * Lignes à afficher à partir de la réponse de `GET …/env`, QUELLE QUE SOIT sa
+ * forme : seuls `key`, `managed` et `has_value` sont repris. Une valeur
+ * présente dans la réponse (ancienne forme du moteur) n'atteint ni l'écran ni
+ * l'état de la page.
+ */
+export function envRows(variables: unknown): EnvRow[] {
+  if (!Array.isArray(variables)) return [];
+  const rows: EnvRow[] = [];
+  for (const v of variables) {
+    if (!v || typeof v !== 'object') continue;
+    const o = v as Record<string, unknown>;
+    if (typeof o['key'] !== 'string' || !o['key']) continue;
+    rows.push({ key: o['key'], managed: o['managed'] === true, hasValue: typeof o['has_value'] === 'boolean' ? o['has_value'] : null });
+  }
+  return rows;
+}
 
 export type SqlCell = string | number | boolean | null | object;
 export interface SqlResult {
@@ -381,6 +421,8 @@ export interface JobResult {
   auto_deploy_available?: boolean;
   rollback_complete?: boolean;
   rollback?: string[];
+  /** `tests_all` : un résultat par app testée. */
+  results?: { app: string; verdict: CloisonnementVerdict | string; cases?: CloisonnementCase[] }[];
   found?: boolean;
   all_passed?: boolean;
   summary?: string;
@@ -478,8 +520,13 @@ export class EngineClient {
     if (tail) params['tail'] = String(tail);
     return this.call('GET', `/projects/${seg(app)}/logs`, undefined, params);
   }
-  envList(app: string): Observable<{ app: string; variables: EnvVar[] }> {
+  /** Les NOMS des variables. Le type de retour est `unknown` à dessein : passer par `envRows()`. */
+  envList(app: string): Observable<{ app: string; variables: unknown }> {
     return this.call('GET', `/projects/${seg(app)}/env`);
+  }
+  /** La valeur d'UNE variable, à la demande — propriétaire seulement, réponse non mise en cache. */
+  envGet(app: string, key: string): Observable<{ app: string; key: string; value: string }> {
+    return this.call('GET', `/projects/${seg(app)}/env/${seg(key)}`);
   }
   envSet(app: string, key: string, value: string): Observable<{ app: string; key: string; set: boolean; effective: string }> {
     return this.call('PUT', `/projects/${seg(app)}/env/${seg(key)}`, { value });
@@ -493,6 +540,8 @@ export class EngineClient {
 
   // §3.5
   runTests(app: string): Observable<JobTicket> { return this.call('POST', `/projects/${seg(app)}/tests`); }
+  /** Superutilisateur : le test de cloisonnement de chaque projet qui en a un, l'un après l'autre. */
+  runAllTests(): Observable<{ job_id: string; kind: 'tests_all'; apps: string[] }> { return this.call('POST', '/tests/run-all'); }
   openTicket(app: string, ticket: TicketRequest): Observable<Ticket> {
     return this.call('POST', `/projects/${seg(app)}/tickets`, ticket);
   }
@@ -627,6 +676,28 @@ export function projectCounts(projects: Project[]): { total: number; running: nu
     running: projects.filter(p => p.state === 'running').length,
     behind: known ? projects.filter(p => p.github?.status === 'behind').length : null,
   };
+}
+
+/**
+ * Verdict de cloisonnement, en clair. « absent » (aucun test trouvé) n'est
+ * JAMAIS présenté comme un succès ; une valeur inconnue non plus.
+ */
+export function cloisonnementLabel(verdict: string | null | undefined): { label: string; tone: '' | 'ok' | 'warn' | 'ko' } {
+  switch (verdict) {
+    case 'ok': return { label: 'cloisonnement vérifié', tone: 'ok' };
+    case 'ko': return { label: 'cloisonnement en échec', tone: 'ko' };
+    case 'absent': return { label: 'aucun test de cloisonnement', tone: 'warn' };
+    case 'non-lancé': return { label: 'cloisonnement non testé', tone: '' };
+    default: return { label: verdict ? `cloisonnement : ${verdict}` : 'cloisonnement : inconnu', tone: 'warn' };
+  }
+}
+
+/** Bilan d'un « Tout tester » : tout est bon seulement si CHAQUE app a le verdict « ok ». */
+export function runAllSummary(results: { verdict: string }[] | null | undefined): { ok: number; ko: number; absent: number; other: number; allOk: boolean } {
+  const list = results ?? [];
+  const n = (v: string) => list.filter(r => r.verdict === v).length;
+  const ok = n('ok'), ko = n('ko'), absent = n('absent');
+  return { ok, ko, absent, other: list.length - ok - ko - absent, allOk: list.length > 0 && ok === list.length };
 }
 
 /** Lien navigable d'un dépôt (`….git` → page GitHub). */

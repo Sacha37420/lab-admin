@@ -538,3 +538,10 @@ a.pj-badge { min-height: 44px; text-decoration: none; &:hover { border-color: va
 /* ─── Projets en deux sections (v10) ───────────────────────────────────── */
 .pj-section { display: flex; flex-direction: column; gap: var(--space-2); }
 .pj-section-title { font-size: var(--text-lg); font-weight: 600; color: var(--text); margin-top: var(--space-2); }
+
+/* ─── Cloisonnement, ports, variables (v11) ───────────────────────────── */
+.pj-cases { color: var(--text-mute); li { overflow-wrap: anywhere; } .pj-case-ok { color: var(--success); } }
+.pj-cases-box { flex-basis: 100%; summary { display: inline-flex; align-items: center; min-height: 44px; cursor: pointer; color: var(--accent); } }
+.pj-job details summary, .pj-item-main > details > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--accent); }
+.pj-ports { font-family: var(--font-mono); }
+.pj-env-value { overflow-wrap: anywhere; }

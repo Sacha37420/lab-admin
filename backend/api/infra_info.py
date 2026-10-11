@@ -1,105 +1,13 @@
-"""Apps hébergées (depuis .ports) et outils d'administration du lab.
+"""Liens vers les outils d'administration du lab (page Services, admins).
 
-``hosted_apps()`` est un port direct de l'ancienne ``InfrastructureView``
-d'app-builder (lecture de ``.ports``, montée en lecture seule ici sous
-``/mnt/ports`` — même fichier, non secret). ``admin_tools()`` calcule les
-liens vers Keycloak / pgAdmin / phpLDAPadmin à partir de variables déjà
-présentes dans le ``.env`` de cette app (``DOMAIN``, ``KEYCLOAK_HOSTNAME_URL`` —
-jamais de dump brut d'un fichier ``.env``).
+Calculés à partir de variables déjà présentes dans le ``.env`` de cette app
+(``KEYCLOAK_PUBLIC_URL``, ``SERVER_URL_LAN``) — jamais de dump d'un fichier ``.env``.
+La liste des apps du lab, elle, vient du moteur (page Projets) : ce module ne
+lit plus ``.ports``.
 """
 from __future__ import annotations
 
-import os
-import re
-
 from django.conf import settings
-
-from . import lab_groups
-
-_PORTS_FILE = '/mnt/ports'
-_HANDLE_PATH_RE = re.compile(r'caddy\.handle_path:\s*"(/[^"]*)/\*"')
-
-
-def _is_real_app(name: str) -> bool:
-    """Une app existe si son dossier porte un docker-compose.yml."""
-    return os.path.isfile(os.path.join(lab_groups.app_dir(name), 'docker-compose.yml'))
-
-
-def _caddy_paths(app: str) -> tuple[str | None, str | None]:
-    """(chemin_frontend, chemin_backend) déduits des labels caddy.handle_path
-    du docker-compose.yml de l'app — seule source de vérité du routage réel.
-    Le nom de dossier peut diverger du préfixe réel (ex: analyse-lora → /lora/),
-    d'où le bug historique des liens faux basés sur le nom de dossier. Même
-    logique que front_prefix() dans scripts/complete_404.sh."""
-    try:
-        with open(os.path.join(lab_groups.app_dir(app), 'docker-compose.yml'), encoding='utf-8') as f:
-            content = f.read()
-    except OSError:
-        return None, None
-    paths = _HANDLE_PATH_RE.findall(content)
-    backend = next((p for p in paths if p.endswith('-api')), None)
-    frontend = next((p for p in paths if not p.endswith('-api')), None)
-    return frontend, backend
-
-
-def hosted_apps() -> list[dict]:
-    """Toutes les apps réellement déployées, avec leur description si connue.
-
-    Volontairement **découplé de .app-descriptions** depuis le 2026-07-30 : ce
-    fichier ne sert plus qu'à la vitrine publique de la page 404. lab-admin est
-    une page d'administration (« Apps du lab », admins), elle doit montrer l'état réel du
-    lab — une app hors vitrine (ou simplement oubliée dans ce fichier) y était
-    invisible en silence, ce qui est le contraire de l'usage attendu.
-
-    Filtre appliqué : une entrée de ``.ports`` n'est retenue que si le dossier
-    correspondant existe avec un ``docker-compose.yml``. Ça écarte les entrées
-    orphelines (app supprimée dont la ligne subsiste) et les services internes
-    qui réservent un port sans être une app (ex. ``robot-lab-engine``).
-    """
-    domain = getattr(settings, 'DOMAIN', '') or ''
-    descriptions = lab_groups.app_descriptions()
-    try:
-        with open(_PORTS_FILE, encoding='utf-8') as f:
-            content = f.read()
-    except FileNotFoundError:
-        return []
-
-    apps = []
-    seen: set[str] = set()
-    for line in content.strip().splitlines():
-        line = line.strip()
-        if not line or line.startswith('#') or line.startswith('__'):
-            continue
-        parts = line.split(':')
-        name = parts[0]
-        # .ports peut contenir des doublons (ajout rejoué) — une seule carte.
-        if name in seen or not _is_real_app(name):
-            continue
-        seen.add(name)
-        backend_port = int(parts[1]) if len(parts) > 1 and parts[1] else None
-        frontend_port = int(parts[2]) if len(parts) > 2 and parts[2] else None
-
-        if domain and domain != 'CHANGE_ME':
-            base = f'https://{domain}'
-            frontend_path, backend_path = _caddy_paths(name)
-            frontend_url = f'{base}{frontend_path}/' if frontend_path else None
-            backend_url = f'{base}{backend_path}/' if backend_path else None
-        else:
-            base = 'http://localhost'
-            frontend_url = f'{base}:{frontend_port}/' if frontend_port else None
-            backend_url = f'{base}:{backend_port}/' if backend_port else None
-
-        label, description = descriptions.get(name, (name, ''))
-        apps.append({
-            'name': name,
-            'label': label,
-            'description': description,
-            'backend_port': backend_port,
-            'frontend_port': frontend_port,
-            'frontend_url': frontend_url,
-            'backend_url': backend_url,
-        })
-    return apps
 
 
 def admin_tools() -> list[dict]:

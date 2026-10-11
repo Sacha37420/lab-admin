@@ -40,23 +40,15 @@ export const routes: Routes = [
   // lab qui n'existe plus. Ne pas confondre avec le service /code du lab (code-server), intact,
   // dont le lien est sur Services (« Éditeur du lab », admins).
   { path: 'code', pathMatch: 'full', redirectTo: 'services' },
+  // « Apps du lab » est fondue dans Projets (ports et vitrine y sont, pour les admins) ; « Debug »
+  // a disparu : les tests de cloisonnement sont lancés et gardés par le moteur, et lus sur Projets.
+  { path: 'apps-hebergees', pathMatch: 'full', redirectTo: 'projets' },
+  { path: 'debug', pathMatch: 'full', redirectTo: 'projets' },
   // ── Administration : tout ce qui suit est réservé au groupe `admins` ────────
-  {
-    path: 'apps-hebergees',
-    loadComponent: () =>
-      import('./pages/apps-hebergees/apps-hebergees.component').then(m => m.AppsHebergeesComponent),
-    canActivate: [adminGuard],
-  },
   {
     path: 'nouvel-utilisateur',
     loadComponent: () =>
       import('./pages/nouvel-utilisateur/nouvel-utilisateur.component').then(m => m.NouvelUtilisateurComponent),
-    canActivate: [adminGuard],
-  },
-  {
-    path: 'debug',
-    loadComponent: () =>
-      import('./pages/debug/debug.component').then(m => m.DebugComponent),
     canActivate: [adminGuard],
   },
   {

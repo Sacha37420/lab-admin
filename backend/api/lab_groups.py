@@ -44,37 +44,7 @@ def app_names() -> list[str]:
             continue
     names.discard(_DEPLOY_SUBDIR)
     return sorted(names)
-_APP_DESCRIPTIONS = os.path.join(_DEV_ROOT, '.app-descriptions')
 _REQUIRE_GROUP_RE = re.compile(r'--require-group\s+(\S+)')
-
-
-def app_descriptions() -> dict[str, tuple[str, str]]:
-    """{nom_app: (nom_affiché, description)} depuis .app-descriptions.
-
-    Ce fichier pilote la **vitrine publique** de la page 404
-    (scripts/complete_404.sh). Il n'est plus utilisé ici pour filtrer ce que
-    lab-admin affiche (cf. infra_info.hosted_apps) — seulement pour habiller
-    une app d'un nom lisible et d'une description quand elle y figure.
-    """
-    result: dict[str, tuple[str, str]] = {}
-    try:
-        with open(_APP_DESCRIPTIONS, encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                parts = [p.strip() for p in line.split('|')]
-                name = parts[0]
-                if not name:
-                    continue
-                label = parts[1] if len(parts) > 1 and parts[1] else name
-                description = parts[2] if len(parts) > 2 else ''
-                # Une app peut avoir plusieurs lignes (routes multiples, ex.
-                # sso-lab) : la première fait foi pour l'habillage.
-                result.setdefault(name, (label, description))
-    except OSError:
-        pass
-    return result
 
 
 def app_required_groups() -> dict[str, list[str]]:

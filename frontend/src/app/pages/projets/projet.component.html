@@ -175,52 +175,8 @@
         }
       </div>
 
-      <!-- ── Variables ────────────────────────────────────────────────────── -->
-      <div class="pj-card" #envCard tabindex="-1">
-        <h2>Variables d'environnement</h2>
-        @if (!envLoaded()) {
-          <div><button type="button" class="btn-secondary" (click)="loadEnv()">Afficher les variables</button></div>
-        } @else {
-          <ul class="pj-list">
-            @for (v of env(); track v.key) {
-              <li>
-                <div class="pj-item-main">
-                  <code>{{ v.key }}</code>
-                  @if (v.managed) {
-                    <span class="pj-hint">gérée par le lab — valeur masquée, non modifiable</span>
-                  } @else {
-                    <code>{{ v.value }}</code>
-                  }
-                </div>
-                @if (!v.managed) {
-                  <div class="pj-row">
-                    <button type="button" class="btn-secondary" (click)="editVar(v)">Modifier</button>
-                    <button type="button" class="pj-danger" #delVar (click)="askRemoveVar(v, delVar, confirmDialog, envCard)" [disabled]="envBusy()"
-                            [attr.aria-label]="'Supprimer ' + v.key">Supprimer</button>
-                  </div>
-                }
-              </li>
-            }
-          </ul>
-          <form class="pj-form" (ngSubmit)="saveVar()">
-            <div class="pj-row">
-              <label class="pj-fld">
-                <span>Clé</span>
-                <input type="text" name="envKey" [(ngModel)]="envKey" maxlength="64" autocomplete="off" spellcheck="false" placeholder="MA_CLE_API">
-              </label>
-              <label class="pj-fld">
-                <span>Valeur</span>
-                <input type="text" name="envValue" [(ngModel)]="envValue" maxlength="4096" autocomplete="off" spellcheck="false">
-              </label>
-            </div>
-            @if (envKey && !envKeyOk) { <p class="pj-hint">Clé : majuscules, chiffres et « _ », en commençant par une lettre.</p> }
-            <div><button type="submit" class="btn-primary" [disabled]="!envKeyOk || envBusy()">Enregistrer</button></div>
-          </form>
-          <p class="pj-hint">Toute modification prend effet au prochain déploiement.</p>
-        }
-        @if (envNotice()) { <p class="pj-success" role="status">{{ envNotice() }}</p> }
-        @if (envError()) { <p class="pj-error" role="alert">{{ envError() }}</p> }
-      </div>
+      <!-- ── Variables : noms seulement ; valeur à la demande, pour le propriétaire ─── -->
+      <app-env-vars [app]="p.name" [canAct]="!!me()?.uid && me()?.uid === p.owner" />
 
       <!-- ── Ma base (I9) : actions seulement si ce projet est le mien ──────── -->
       <app-ma-base [database]="p.database" [actions]="!!me()?.uid && me()?.uid === p.owner"
@@ -301,5 +257,4 @@
       </div>
     </section>
   }
-  <app-confirm #confirmDialog />
 </div>

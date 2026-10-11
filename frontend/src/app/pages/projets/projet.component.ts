@@ -5,12 +5,12 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { EngineService } from '../../core/engine.service';
 import {
-  Commits, ENV_KEY_RE, EngineError, EnvVar, Job, Logs, Me, ProjectDetail, SqlCell, SqlResult,
+  Commits, EngineError, Job, Logs, Me, ProjectDetail, SqlCell, SqlResult,
   Ticket, WorkspaceOpened, isWorkspaceUrl, repoPage, stateLabel, toEngineError, verdictLabel,
 } from '../../core/engine.client';
 import { preopenTab, sendTab } from '../../core/tool-tab';
 import { JobSuiviComponent } from '../../shared/job-suivi/job-suivi.component';
-import { ConfirmDialogComponent } from '../../shared/confirm-dialog/confirm-dialog.component';
+import { EnvVarsComponent } from '../../shared/env-vars/env-vars.component';
 import { DATE_FORMAT, shortSha } from '../../core/format';
 import { MaBaseComponent } from '../../shared/ma-base/ma-base.component';
 import { EmailProjetComponent } from '../../shared/email/email-projet.component';
@@ -25,7 +25,7 @@ import { EmailProjetComponent } from '../../shared/email/email-projet.component'
 @Component({
   selector: 'app-projet',
   standalone: true,
-  imports: [FormsModule, RouterLink, DatePipe, JobSuiviComponent, MaBaseComponent, EmailProjetComponent, ConfirmDialogComponent],
+  imports: [FormsModule, RouterLink, DatePipe, JobSuiviComponent, MaBaseComponent, EmailProjetComponent, EnvVarsComponent],
   templateUrl: './projet.component.html',
 })
 export class ProjetComponent implements OnInit {
@@ -65,15 +65,6 @@ export class ProjetComponent implements OnInit {
   logs = signal<Logs | null>(null);
   logsLoading = signal(false);
   logsError = signal('');
-
-  // Variables
-  env = signal<EnvVar[]>([]);
-  envLoaded = signal(false);
-  envError = signal('');
-  envNotice = signal('');
-  envKey = '';
-  envValue = '';
-  envBusy = signal(false);
 
   // SQL
   query = '';
@@ -115,7 +106,6 @@ export class ProjetComponent implements OnInit {
     this.deployJobId.set(''); this.deployError.set(null);
     this.testsJobId.set(''); this.testsError.set(null);
     this.logs.set(null); this.logsError.set(''); this.logService = '';
-    this.env.set([]); this.envLoaded.set(false); this.envError.set(''); this.envNotice.set('');
     this.sqlResult.set(null); this.sqlError.set(null);
     this.ticket.set(null); this.ticketError.set(null);
     this.wsOpened.set(null); this.wsError.set(null); this.wsNotice.set('');
@@ -192,64 +182,6 @@ export class ProjetComponent implements OnInit {
     this.engine.logs(this.app, this.logService || null, Number(this.logTail)).subscribe({
       next: l => { this.logs.set(l); this.logsLoading.set(false); },
       error: err => { this.logs.set(null); this.logsError.set(toEngineError(err).detail); this.logsLoading.set(false); },
-    });
-  }
-
-  // ── Variables d'environnement ──────────────────────────────────────────────
-
-  loadEnv(): void {
-    this.envError.set('');
-    this.engine.envList(this.app).subscribe({
-      next: r => { this.env.set(r.variables ?? []); this.envLoaded.set(true); },
-      error: err => this.envError.set(toEngineError(err).detail),
-    });
-  }
-
-  get envKeyOk(): boolean { return ENV_KEY_RE.test(this.envKey); }
-
-  editVar(v: EnvVar): void {
-    if (v.managed) return;
-    this.envKey = v.key;
-    this.envValue = v.value ?? '';
-  }
-
-  saveVar(): void {
-    if (!this.envKeyOk || this.envBusy()) return;
-    this.envBusy.set(true);
-    this.envError.set(''); this.envNotice.set('');
-    const key = this.envKey;
-    this.engine.envSet(this.app, key, this.envValue).subscribe({
-      next: () => {
-        this.envBusy.set(false);
-        this.envNotice.set(`${key} enregistrée — prise en compte au prochain déploiement.`);
-        this.envKey = ''; this.envValue = '';
-        this.loadEnv();
-      },
-      error: err => { this.envBusy.set(false); this.envError.set(toEngineError(err).detail); },
-    });
-  }
-
-  /** Confirmation dans un dialogue de l'app (pas de boîte native), puis suppression. */
-  askRemoveVar(v: EnvVar, origin: HTMLElement, confirm: ConfirmDialogComponent, fallback: HTMLElement): void {
-    if (v.managed || this.envBusy()) return;
-    confirm.ask({
-      title: 'Supprimer cette variable ?',
-      text: `La variable ${v.key} sera retirée de l'application au prochain déploiement.`,
-      confirmLabel: 'Supprimer', danger: true,
-    }, origin, () => this.removeVar(v), fallback);
-  }
-
-  private removeVar(v: EnvVar): void {
-    if (v.managed || this.envBusy()) return;
-    this.envBusy.set(true);
-    this.envError.set(''); this.envNotice.set('');
-    this.engine.envUnset(this.app, v.key).subscribe({
-      next: () => {
-        this.envBusy.set(false);
-        this.envNotice.set(`${v.key} supprimée — prise en compte au prochain déploiement.`);
-        this.loadEnv();
-      },
-      error: err => { this.envBusy.set(false); this.envError.set(toEngineError(err).detail); },
     });
   }
 

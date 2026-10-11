@@ -4,7 +4,8 @@ Le portail du lab : la seule interface web d'un lab où plusieurs développeurs 
 mettent en ligne leurs applications sur un même serveur. `lab-admin` **ne détient aucun privilège** :
 tout ce qu'un développeur y fait (créer un projet, déployer, lire ses journaux, ouvrir son éditeur)
 est une demande adressée à un autre service du lab, le moteur `lab-mcp`, qui seul vérifie et exécute.
-Son propre backend ne sert que l'administration du lab.
+Son propre backend ne sert plus qu'à trois choses d'administration : créer un compte, donner les
+liens d'administration, lire le catalogue d'App Builder.
 
 Ce dépôt est un sous-module du dépôt du lab ; il ne fonctionne pas seul.
 
@@ -17,9 +18,9 @@ groupe `developers` ; ce qu'il voit ensuite dépend de ce qu'il est.
 |---|---|---|---|---|
 | **Accueil** `/` | présentation du lab, ses chiffres, son parcours, les règles | idem ; à la première visite, son espace est préparé automatiquement | présentation, règles | présentation, règles |
 | **Services** `/services` | services communs, sa base et son pgAdmin, ses comptes d'envoi d'email, accès pour ses assistants, interfaces d'administration | services communs, sa base et son pgAdmin, ses comptes d'envoi d'email, accès pour ses assistants | services communs, interfaces d'administration | services communs |
-| **Projets** `/projets` | tous les projets du lab avec leur propriétaire, vue d'un développeur donné, création ; puis le bloc « Conception » | ses projets, création | « aucun projet à votre nom » ; puis le bloc « Conception » | « aucun projet à votre nom » |
-| **Un projet** `/projets/<nom>` | tout projet ; sur celui d'un autre, base et email en lecture seule | ses projets | — | — |
-| **Apps du lab**, **Nouvel utilisateur**, **Debug** | oui | refusé | oui | refusé |
+| **Projets** `/projets` | tous les projets du lab avec leur propriétaire, vue d'un développeur donné, création, « Tout tester » ; puis le bloc « Conception » | ses projets, création | pas de liste, et la page dit pourquoi ; puis le bloc « Conception » | « aucun projet à votre nom » |
+| **Un projet** `/projets/<nom>` | tout projet ; sur celui d'un autre : base et email en lecture seule, variables réduites à leurs noms | ses projets | — | — |
+| **Nouvel utilisateur** | oui | refusé | oui | refusé |
 
 Précisions :
 
@@ -31,15 +32,21 @@ Précisions :
   console SQL, compte d'envoi d'email, ouverture de l'éditeur (VS Code dans le navigateur),
   ouverture d'un ticket.
 - **Projets** est en deux sections quand le moteur indique la nature de chaque projet : « Projets
-  de déploiement » et « Outils de dev ».
+  de déploiement » et « Outils de dev ». Chaque ligne donne l'état, la version en service, l'écart
+  avec GitHub et le dernier verdict du test de cloisonnement (détail des cas à la demande). Un
+  administrateur y voit en plus les ports, la description de vitrine et l'étiquette « hors
+  vitrine ». Le superutilisateur peut lancer le test de tous les projets ; un projet sans test
+  n'y est jamais compté comme vérifié.
+- **Pourquoi un administrateur qui ne développe pas n'a pas de liste** : la liste vient du moteur,
+  qui ne répond qu'aux comptes développeurs. `lab-admin` n'en tient pas une copie.
 - Le **superutilisateur** est celui que le moteur désigne comme tel dans ses réponses ; `lab-admin`
   ne le déduit d'aucun groupe.
   Le quatrième profil est celui d'un compte dont l'identifiant ne peut pas servir de compte
   développeur (autre chose que des minuscules et des chiffres).
 - Le menu ne montre jamais un lien vers une page qui refuserait : trois liens pour un
-  non-administrateur, six pour un administrateur.
-- Les anciennes adresses `/outils`, `/conception` et `/code` redirigent vers `/services` ou
-  `/projets`. (`/code` est ici la route de `lab-admin` ; l'éditeur du lab, servi ailleurs sous le
+  non-administrateur, quatre pour un administrateur.
+- Les anciennes adresses `/outils`, `/conception`, `/code`, `/apps-hebergees` et `/debug`
+  redirigent vers `/services` ou `/projets`. (`/code` est ici la route de `lab-admin` ; l'éditeur du lab, servi ailleurs sous le
   même mot, n'est pas concerné.)
 
 ## Architecture
@@ -55,10 +62,9 @@ Précisions :
         │                          Formes des réponses : lab-mcp/API.md, dans le dépôt du lab.
         │
         └── /lab-admin-api ──►  backend Django (ce dépôt, backend/)
-                                administration seulement : création de comptes,
-                                apps du lab, liens d'administration, catalogue et
-                                lancement des tests end-to-end, catalogue App Builder.
-                                + un worker Celery et un Redis privés pour ces tests.
+                                administration seulement : création de comptes (et groupes
+                                requis par chaque app), liens d'administration,
+                                catalogue App Builder.
 ```
 
 Ce que fait le **frontend** : il présente, il appelle. Il parle au moteur sur la même origine,
@@ -68,19 +74,19 @@ Ce que fait le **moteur** (hors de ce dépôt) : il vérifie à chaque appel qui
 appartient le projet, puis agit. Un projet qui n'appartient pas à l'appelant lui est rendu comme
 introuvable.
 
-Ce que fait le **backend** de `lab-admin` : les pages d'administration. Il crée des comptes par un
-compte de service Keycloak, lit en lecture seule le dépôt du lab monté dans le conteneur (ports,
-dossiers des apps, groupes requis par app — jamais un fichier `.env`), et lance les tests
-end-to-end par le service de test du lab.
+Ce que fait le **backend** de `lab-admin` : quatre routes, toutes d'administration. Il crée des
+comptes par un compte de service Keycloak, lit en lecture seule dans le dépôt du lab monté dans le
+conteneur les groupes requis par chaque app (jamais un fichier `.env`), donne les liens
+d'administration et lit le catalogue d'App Builder. Il n'a aucune table à lui.
 
 Ce que le backend **ne fait pas** : rien pour les développeurs. Aucune de ses vues n'est ouverte à
 un non-administrateur. Ajouter un endpoint ici pour une page de développeur reviendrait à donner
-un privilège à `lab-admin` : la fonction va dans le moteur.
+un privilège à `lab-admin` : la fonction va dans le moteur. Il ne liste pas les apps et ne lance
+aucun test : c'est le moteur qui le fait.
 
-Conteneurs (`docker-compose.yml`) : `lab-admin-frontend` (nginx), `lab-admin-backend` (Django),
-`lab-admin-worker` (Celery, un seul test à la fois), `lab-admin-redis`. Le reverse proxy du lab
-sert le frontend sous `/lab-admin/` et le backend sous `/lab-admin-api/`. Aucun socket Docker
-n'est monté ; les deux montages du backend sont en lecture seule.
+Conteneurs (`docker-compose.yml`) : `lab-admin-frontend` (nginx) et `lab-admin-backend` (Django).
+Le reverse proxy du lab sert le frontend sous `/lab-admin/` et le backend sous `/lab-admin-api/`.
+Aucun socket Docker n'est monté ; le seul montage du backend est en lecture seule.
 
 ## Modèle de sécurité
 
@@ -90,8 +96,7 @@ jeton sans l'un de ces groupes (`backend/api/authentication.py`).
 
 **La permission par défaut est fermée.** Entrer ne donne rien : la permission par défaut du
 backend exige le groupe `admins` (`DEFAULT_PERMISSION_CLASSES = ['api.permissions.IsLabAdmin']`,
-`backend/config/settings.py`). Une seule vue y échappe, `CatalogSyncView`, appelée par un script
-du lab avec un secret partagé (en-tête `X-Setup-Key`).
+`backend/config/settings.py`). Aucune vue n'y échappe.
 
 Deux règles pour qui modifie ce dépôt :
 
@@ -106,13 +111,14 @@ Les gardes Angular ne sont que de l'affichage : ce sont le backend et le moteur 
 Un test vérifie, route par route et méthode par méthode, qu'un développeur non administrateur
 reçoit 403 sur tout le backend (`backend/api/tests.py`).
 
-**Les secrets à l'écran.** Trois mots de passe passent par l'interface ; la règle est la même pour
-les trois :
+**Les secrets à l'écran.** Quatre secrets passent par l'interface ; la règle est la même pour
+tous :
 
 | Secret | Où | Règle |
 |---|---|---|
 | mot de passe de la base d'un développeur | `shared/ma-base` | demandé au moteur au clic seulement, jamais au chargement ; masqué de nouveau après 2 minutes, quand l'onglet passe à l'arrière-plan, en quittant la page |
 | mot de passe d'un compte qu'un administrateur vient de créer | `pages/nouvel-utilisateur` | masqué par défaut, affiché à la demande, mêmes effacements |
+| valeur d'une variable d'environnement d'un projet | `shared/env-vars` | la liste ne porte que les noms ; une valeur se demande au moteur au clic, une à la fois, par le propriétaire seulement ; mêmes effacements ; modifier ou supprimer ne l'affiche pas |
 | mot de passe d'un compte d'envoi d'email | `shared/email` | en écriture seule : envoyé une fois, jamais relu ni réaffiché, vidé du formulaire dès l'envoi |
 
 À ne jamais faire avec l'un d'eux : l'écrire dans `localStorage`, `sessionStorage`, un cookie, une
@@ -134,7 +140,6 @@ frontend/src/app/
                           les erreurs, le suivi d'un job. Sans dépendance à Angular.
                           Une forme qui change côté moteur se corrige ici et nulle part ailleurs.
     engine.service.ts     le même, branché sur HttpClient
-    lab-api.service.ts    appels au backend de lab-admin (page Debug)
     auth.guard.ts         adminGuard et labGuard
     auth.interceptor.ts   pose le jeton sur chaque requête
     keycloak.service.ts   connexion, groupes, isAdmin
@@ -146,10 +151,11 @@ frontend/src/app/
     accueil/  services/  projets/        les pages de tout le monde
     projets/projet.component.*           la page d'un projet
     dashboard/                           le bloc « Conception », inclus dans Projets pour les admins
-    apps-hebergees/  nouvel-utilisateur/  debug/     les pages d'administration
+    nouvel-utilisateur/                  la page d'administration
   shared/
     ma-base/          base de données, mot de passe à la demande, pgAdmin personnel
     email/            comptes d'envoi (page Services) et choix du compte d'un projet
+    env-vars/         variables d'environnement d'un projet, valeur à la demande
     job-suivi/        suivi d'une création, d'un déploiement, d'un test
     confirm-dialog/   demande de confirmation (remplace les boîtes natives du navigateur)
 frontend/src/styles.scss   couleurs, espacements et polices en variables CSS ; aucun composant
@@ -157,16 +163,17 @@ frontend/src/styles.scss   couleurs, espacements et polices en variables CSS ; a
 backend/api/
   permissions.py      IsLabAdmin
   authentication.py   validation du jeton Keycloak
-  views.py, urls.py   les vues d'administration
-  infra_info.py, lab_groups.py   lecture du dépôt du lab (apps, ports, groupes requis)
+  views.py, urls.py   les quatre vues d'administration
+  infra_info.py       liens d'administration
+  lab_groups.py       lecture du dépôt du lab : groupes requis par chaque app
   keycloak_admin.py   compte de service pour la création de comptes
-  tasks.py            lancement des tests end-to-end
+  models_appbuilder.py   lecture seule du catalogue d'App Builder (aucune table propre)
   tests.py            tests du cloisonnement
 ```
 
 ## Tests
 
-**Backend** — quinze tests. Le rôle de base de données de `lab-admin` ne peut pas créer de base de
+**Backend** — quatorze tests. Le rôle de base de données de `lab-admin` ne peut pas créer de base de
 test : on lui donne un PostgreSQL jetable. Depuis la racine du dépôt du lab, l'image
 `lab-admin-backend` étant construite :
 
@@ -182,7 +189,7 @@ docker run --rm --env-file lab-admin/.env --network lab-admin-test-net \
 docker stop lab-admin-test-pg && docker network rm lab-admin-test-net
 ```
 
-**Client du moteur** — vingt tests, sous Node, sans navigateur ; ils tiennent la méthode, le
+**Client du moteur** — vingt-deux tests, sous Node, sans navigateur ; ils tiennent la méthode, le
 chemin et le corps de chaque appel, la lecture des erreurs, le suivi d'un job, l'adresse de retour :
 
 ```bash
@@ -232,9 +239,6 @@ Variables lues (fichier `.env`, non versionné ; `.env.example` en donne la list
 | `KEYCLOAK_REQUIRED_GROUPS` | groupes admis par le backend (`admins,developers`), écrit d'après `.keycloak-client-opts` |
 | `KEYCLOAK_ADMIN_CLIENT_ID`, `KEYCLOAK_ADMIN_CLIENT_SECRET`, `KEYCLOAK_ADMIN_BASE_URL` | compte de service qui crée les comptes |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_STARTTLS`, `SMTP_SSL`, `SMTP_FROM`, `SMTP_FROM_DISPLAY` | envoi de ses identifiants à un compte créé |
-| `SETUP_CATALOG_KEY` | secret partagé avec le script du lab qui enregistre le catalogue des tests |
-| `E2E_RUNNER_URL` | adresse interne du service de test |
-| `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | file des tests end-to-end |
 
 Le frontend reçoit sa configuration au démarrage du conteneur : `frontend/nginx-entrypoint.sh`
 écrit `assets/env.js` (adresses de Keycloak, du backend, du moteur, de Storage, d'OAuth Hub,
@@ -245,27 +249,21 @@ tiennent à jour mais que le code de ce dépôt ne lit pas.
 
 ## Points connus, laissés ouverts
 
-- **« Apps du lab » et « Projets » se recouvrent** pour le superutilisateur ; « Apps du lab » garde
-  en propre les ports, la vitrine publique, et d'être utile à un administrateur qui ne développe pas.
-- **Les valeurs des variables d'environnement d'un projet s'affichent en clair** dès qu'on les
-  demande, sans masquage par ligne.
 - **Les liens vers le pgAdmin du lab et l'annuaire** pointent le réseau local : hors de ce réseau
   ils ne mènent nulle part.
 - **Le schéma OpenAPI et la page Swagger du backend** répondent sans authentification (les données,
   elles, exigent un administrateur).
 - **Le conteneur du frontend reçoit tout le `.env`**, secrets du backend compris, alors qu'il n'a
   besoin que de quelques adresses.
-- **Deux lanceurs de tests de cloisonnement** coexistent, chacun avec sa mémoire de résultats : la
-  page d'un projet (par le moteur) et la page Debug (par le backend).
-- **Tables `departments` et `user_records`** : héritées du gabarit d'origine, sans usage ; les
-  modèles restent déclarés parce que les supprimer efface des données.
+- **Le backend est servi par le serveur de développement de Django** (`runserver`, `Dockerfile`).
+- **Les ports du backend et du frontend sont publiés sur l'hôte**, en plus du reverse proxy.
 - **Le backend renvoie le mot de passe d'un compte créé** dans sa réponse, y compris quand l'email
   est parti : le masquage est fait par la page.
 - **Signalement d'un compte d'envoi modifié** : la page s'appuie sur ce que dit le moteur, avec un
   repli en mémoire de session à retirer quand il ne servira plus (`core/smtp-stale.service.ts`).
+- **Un administrateur qui ne développe pas n'a plus de vue des apps du lab** (voir plus haut).
 - **Pas de test de cloisonnement automatisé** (`frontend/e2e/cloisonnement.spec.ts`) pour
   `lab-admin` lui-même.
-- **Les ports du backend et du frontend sont publiés sur l'hôte**, en plus du reverse proxy.
 
 ## Licence
 

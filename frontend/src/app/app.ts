@@ -39,9 +39,7 @@ export class AppComponent {
     { path: '/services',            label: 'Services',           abbr: 'Se' },
     { path: '/projets',             label: 'Projets',            abbr: 'Pr' },
     // Administration (adminGuard sur chaque route).
-    { path: '/apps-hebergees',      label: 'Apps du lab',        abbr: 'La', adminOnly: true },
     { path: '/nouvel-utilisateur',  label: 'Nouvel utilisateur', abbr: 'Nu', adminOnly: true },
-    { path: '/debug',               label: 'Debug',              abbr: 'De', adminOnly: true },
   ];
 
   /** Un non-admin ne voit aucun lien vers une page qui le refuserait. */

@@ -5,7 +5,7 @@ import { KeycloakService } from './keycloak.service';
 /**
  * Guard : redirige vers /forbidden si l'utilisateur n'a pas le groupe 'admins'.
  * L'utilisateur est forcément authentifié ici (Keycloak init avec login-required).
- * Posé sur chaque page d'administration (Apps du lab, Nouvel utilisateur, Debug).
+ * Posé sur chaque page d'administration (aujourd'hui : Nouvel utilisateur).
  */
 export const adminGuard: CanActivateFn = () => {
   const kc = inject(KeycloakService);

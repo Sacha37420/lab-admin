@@ -3,10 +3,10 @@ import { Subscription } from 'rxjs';
 import { EngineService } from '../../core/engine.service';
 import { shortSha } from '../../core/format';
 import {
-  DeployTests, EngineError, Job, JobTestCase, deployVerdicts, testCases, toEngineError, verdictLabel,
+  DeployTests, EngineError, Job, JobTestCase, cloisonnementLabel, deployVerdicts, runAllSummary, testCases, toEngineError, verdictLabel,
 } from '../../core/engine.client';
 
-const KIND_LABELS: Record<Job['kind'], string> = { create: 'Création', deploy: 'Déploiement', tests: 'Tests' };
+const KIND_LABELS: Record<Job['kind'], string> = { create: 'Création', deploy: 'Déploiement', tests: 'Tests', tests_all: 'Test de tous les projets' };
 const STATE_LABELS: Record<Job['state'], string> = {
   queued: 'en file d\'attente', running: 'en cours', succeeded: 'réussi', failed: 'échoué',
 };
@@ -21,7 +21,7 @@ const STATE_LABELS: Record<Job['state'], string> = {
   standalone: true,
   template: `
     @if (job(); as j) {
-      <div class="pj-job" [class.pj-ok]="j.state === 'succeeded'" [class.pj-ko]="j.state === 'failed'" aria-live="polite">
+      <div class="pj-job" [class.pj-ok]="good(j)" [class.pj-ko]="bad(j)" aria-live="polite">
         <div class="pj-job-head">
           <strong>{{ kindLabel(j) }} {{ stateLabel(j) }}</strong>
           @if (j.state === 'queued' && j.jobs_ahead > 0) { <span>— {{ j.jobs_ahead }} job(s) devant</span> }
@@ -57,6 +57,32 @@ const STATE_LABELS: Record<Job['state'], string> = {
                 </li>
               }
             </ul>
+          }
+          @if (r.results; as results) {
+            <!-- « Tout tester » : un verdict par app. Aucun test trouvé n'est pas un succès. -->
+            @if (results.length === 0) {
+              <p class="pj-error">Aucun projet n'a été testé : ce n'est pas un succès.</p>
+            } @else {
+              <p [class]="summary(results).allOk ? 'pj-success' : 'pj-error'">
+                {{ summary(results).ok }} vérifié(s), {{ summary(results).ko }} en échec, {{ summary(results).absent }} sans test{{ summary(results).other ? ', ' + summary(results).other + ' autre(s)' : '' }}.
+              </p>
+              <ul class="pj-list">
+                @for (res of results; track res.app) {
+                  <li>
+                    <div class="pj-item-main">
+                      <span class="pj-item-name">{{ res.app }}</span>
+                      @if (res.cases?.length) {
+                        <details>
+                          <summary>{{ res.cases?.length }} cas</summary>
+                          <ul class="pj-reasons pj-cases">@for (c of res.cases ?? []; track $index) { <li [class.pj-case-ok]="c.status === 'PASSED'">{{ c.status }} — {{ c.title }}</li> }</ul>
+                        </details>
+                      }
+                    </div>
+                    <span [class]="'pj-badge ' + tone(res.verdict)">{{ cloisonnement(res.verdict) }}</span>
+                  </li>
+                }
+              </ul>
+            }
           }
           @if (r.rollback?.length) {
             <p class="pj-hint">Retour arrière {{ r.rollback_complete ? 'complet' : 'INCOMPLET — reste à faire à la main' }} :</p>
@@ -107,9 +133,23 @@ export class JobSuiviComponent implements OnChanges, OnDestroy {
   ngOnDestroy(): void { this.sub?.unsubscribe(); }
 
   readonly shortSha = shortSha;
+  readonly summary = runAllSummary;
+  cloisonnement(v: string): string { return cloisonnementLabel(v).label; }
+  tone(v: string): string { const t = cloisonnementLabel(v).tone; return t ? `pj-${t}` : ''; }
 
   kindLabel(j: Job): string { return KIND_LABELS[j.kind] ?? j.kind; }
-  stateLabel(j: Job): string { return STATE_LABELS[j.state] ?? j.state; }
+  /**
+   * « Tout tester » : le job peut s'achever sans erreur alors que des projets sont en échec ou
+   * sans test. Il n'est alors NI dit « réussi » NI montré en vert : seul compte le bilan par app.
+   */
+  private mixed(j: Job): boolean {
+    return j.kind === 'tests_all' && j.state === 'succeeded' && !runAllSummary(j.result?.results).allOk;
+  }
+  good(j: Job): boolean { return j.state === 'succeeded' && !this.mixed(j); }
+  bad(j: Job): boolean { return j.state === 'failed' || this.mixed(j); }
+  stateLabel(j: Job): string {
+    return this.mixed(j) ? 'terminé — tout n\'est pas vérifié' : STATE_LABELS[j.state] ?? j.state;
+  }
   verdicts(j: Job): DeployTests | null { return deployVerdicts(j.result); }
   cases(j: Job): JobTestCase[] { return testCases(j.result); }
   verdict(v: string): string { return verdictLabel(v); }

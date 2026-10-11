@@ -36,7 +36,7 @@ from django.test import TestCase, override_settings
 from django.urls import URLPattern
 from rest_framework.test import APIClient
 
-from . import infra_info, lab_groups, urls as api_urls
+from . import lab_groups, urls as api_urls
 from .authentication import KeycloakJWTAuthentication, KeycloakUser
 
 ADMINS = ['admins', 'developers']
@@ -56,8 +56,8 @@ def _sample_path(pattern: URLPattern) -> str:
     return '/api/' + str(pattern.pattern).replace('<int:pk>', '1')
 
 
-# Seule vue hors JWT : secret partagé X-Setup-Key (scripts/setup_unit.sh).
-SHARED_SECRET = {'debug/catalog-sync/'}
+# Plus aucune vue hors JWT : CatalogSyncView (secret partagé) est partie avec la page Debug.
+SHARED_SECRET: set[str] = set()
 
 
 class DefaultDenyTests(TestCase):
@@ -83,14 +83,18 @@ class DefaultDenyTests(TestCase):
             checked.append(route)
         # L'inventaire couvre bien tout ce qui existait, et rien n'a été ouvert.
         self.assertEqual(len(checked), len(api_urls.urlpatterns) - len(SHARED_SECRET))
-        # Routes sans appelant retirées (relecture du 2026-10-11) : elles ne doivent pas revenir.
-        for gone in ('me/', 'users/', 'departments/'):
+        # Routes retirées (sans appelant, ou passées au moteur) : elles ne doivent pas revenir.
+        for gone in ('me/', 'users/', 'departments/', 'infrastructure/', 'debug/tests/', 'debug/run/',
+                     'debug/jobs/1/', 'debug/catalog-sync/'):
             self.assertNotIn(gone, checked)
             self.assertEqual(self.sacha.get('/api/' + gone).status_code, 404)
-        for expected in ('apps/public/', 'infrastructure/',
-                         'tools/', 'lab-users/groups/', 'lab-users/', 'debug/tests/',
-                         'debug/run/', 'debug/jobs/<int:pk>/'):
-            self.assertIn(expected, checked)
+        # L'inventaire EXACT du backend : toute route ajoutée ou retirée doit passer par ici.
+        self.assertEqual(sorted(checked), ['apps/public/', 'lab-users/', 'lab-users/groups/', 'tools/'])
+        # Routes retirées (sans appelant, ou passées au moteur) : elles ne doivent pas revenir.
+        for gone in ('me/', 'users/', 'departments/', 'infrastructure/', 'debug/tests/', 'debug/run/',
+                     'debug/jobs/1/', 'debug/catalog-sync/'):
+            self.assertNotIn(gone, checked)
+            self.assertEqual(self.sacha.get('/api/' + gone).status_code, 404)
 
     def test_user_creation_is_refused_before_touching_keycloak(self):
         with mock.patch('api.views.keycloak_admin') as kc:
@@ -106,22 +110,20 @@ class DefaultDenyTests(TestCase):
 
     def test_admins_keep_everything(self):
         for c in (self.sacha, self.e2e):
-            for path in ('/api/tools/', '/api/infrastructure/', '/api/debug/tests/'):
+            for path in ('/api/tools/',):
                 with self.subTest(path=path):
                     self.assertEqual(c.get(path).status_code, 200, path)
 
-    def test_catalog_sync_still_uses_its_shared_secret(self):
-        with override_settings(SETUP_CATALOG_KEY='k' * 32):
-            anon = APIClient()
-            refused = anon.post('/api/debug/catalog-sync/', {'app': 'x'}, format='json')
-            self.assertEqual(refused.status_code, 403)
-            ok = anon.post('/api/debug/catalog-sync/', {'app': 'x', 'tests': []},
-                           format='json', HTTP_X_SETUP_KEY='k' * 32)
-            self.assertEqual(ok.status_code, 200)
+    def test_no_view_outside_the_token_check(self):
+        # L'ancien point d'entrée à secret partagé n'existe plus, avec ou sans en-tête.
+        anon = APIClient()
+        resp = anon.post('/api/debug/catalog-sync/', {'app': 'x', 'tests': []},
+                         format='json', HTTP_X_SETUP_KEY='k' * 32)
+        self.assertEqual(resp.status_code, 404)
 
     def test_anonymous_gets_nothing(self):
         anon = APIClient()
-        for path in ('/api/tools/', '/api/infrastructure/', '/api/lab-users/groups/'):
+        for path in ('/api/tools/', '/api/apps/public/', '/api/lab-users/groups/'):
             self.assertIn(anon.get(path).status_code, (401, 403), path)
 
 
@@ -163,8 +165,7 @@ class RealTokenGateTests(TestCase):
 
     def test_developer_passes_the_door_and_reaches_nothing(self):
         tok = token('hassan', ['developers', 'amis'])
-        for path in ('/api/tools/', '/api/infrastructure/',
-                     '/api/lab-users/groups/', '/api/debug/tests/', '/api/apps/public/'):
+        for path in ('/api/tools/', '/api/lab-users/groups/', '/api/apps/public/'):
             with self.subTest(path=path):
                 resp = self.get(path, tok)
                 self.assertEqual(resp.status_code, 403)
@@ -231,16 +232,9 @@ class AppLocationTests(TestCase):
         app('demenagee', 'vieux-chemin', 'admins')                   # présente aux DEUX endroits :
         app('deploiement/demenagee', 'demenagee', 'developers')      #   deploiement/ fait foi
         os.makedirs(os.path.join(self.root, 'deploiement', 'sans-compose'))
-        ports = os.path.join(self.root, '.ports')
-        with open(ports, 'w') as f:
-            f.write('ancienne:9001:9101\nnouvelle:9002:9102\ndemenagee:9003:9103\n'
-                    'sans-compose:9004:9104\norpheline:9005:9105\n../evil:1:2\n')
-        for target, attr, value in ((lab_groups, '_DEV_ROOT', self.root),
-                                    (lab_groups, '_APP_DESCRIPTIONS', os.path.join(self.root, '.app-descriptions')),
-                                    (infra_info, '_PORTS_FILE', ports)):
-            p = mock.patch.object(target, attr, value)
-            p.start()
-            self.addCleanup(p.stop)
+        p = mock.patch.object(lab_groups, '_DEV_ROOT', self.root)
+        p.start()
+        self.addCleanup(p.stop)
 
     def test_app_dir_rule(self):
         self.assertEqual(lab_groups.app_dir('ancienne'), os.path.join(self.root, 'ancienne'))
@@ -260,17 +254,13 @@ class AppLocationTests(TestCase):
         # Le dossier `deploiement` lui-même n'est jamais pris pour une app.
         self.assertNotIn('deploiement', lab_groups.app_names())
 
-    @override_settings(DOMAIN='lab.example.org')
-    def test_hosted_apps_reads_both_locations(self):
-        apps = {a['name']: a for a in infra_info.hosted_apps()}
-        self.assertEqual(sorted(apps), ['ancienne', 'demenagee', 'nouvelle'])
-        self.assertEqual(apps['ancienne']['frontend_url'], 'https://lab.example.org/ancienne/')
-        self.assertEqual(apps['nouvelle']['frontend_url'], 'https://lab.example.org/nouvelle/')
-        self.assertEqual(apps['nouvelle']['backend_url'], 'https://lab.example.org/nouvelle-api/')
-        # Le compose de deploiement/ fait foi, pas la copie restée à la racine.
-        self.assertEqual(apps['demenagee']['frontend_url'], 'https://lab.example.org/demenagee/')
-
-    def test_endpoints_serve_both_locations_to_an_admin(self):
-        sacha = client_for('sacha', ADMINS)
-        names = [a['name'] for a in sacha.get('/api/infrastructure/').json()['apps']]
-        self.assertEqual(sorted(names), ['ancienne', 'demenagee', 'nouvelle'])
+    def test_groups_endpoint_serves_both_locations_to_an_admin(self):
+        # Page « Nouvel utilisateur » : groupes de Keycloak (compte de service, remplacé ici) et
+        # apps lues sur disque, aux deux emplacements.
+        with mock.patch('api.views.keycloak_admin.all_groups', return_value=[
+                {'id': '1', 'name': 'developers'}, {'id': '2', 'name': 'famille'}]):
+            data = client_for('sacha', ADMINS).get('/api/lab-users/groups/').json()
+        self.assertEqual([a['name'] for a in data['apps']], ['ancienne', 'demenagee', 'nouvelle'])
+        by = {g['name']: g['required_by'] for g in data['groups']}
+        self.assertEqual(by['developers'], ['demenagee', 'nouvelle'])
+        self.assertEqual(by['famille'], ['ancienne'])

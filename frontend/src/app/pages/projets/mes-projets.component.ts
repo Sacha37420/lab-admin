@@ -8,7 +8,7 @@ import { EngineService } from '../../core/engine.service';
 import { KeycloakService } from '../../core/keycloak.service';
 import {
   APP_NAME_RE, DevSummary, EngineError, Group, Job, Me, NameCheck, Profile, Project, ProjectType,
-  githubGapLabel, isWorkspaceUrl, projectSections,
+  cloisonnementLabel, githubGapLabel, isWorkspaceUrl, projectSections,
   profileOf, stateLabel, toEngineError,
 } from '../../core/engine.client';
 import { JobSuiviComponent } from '../../shared/job-suivi/job-suivi.component';
@@ -173,6 +173,31 @@ export class MesProjetsComponent implements OnInit {
   // ── Affichage d'une ligne ──────────────────────────────────────────────────
 
   readonly gap = githubGapLabel;
+  readonly cloisonnement = cloisonnementLabel;
+
+  // ── « Tout tester » (superutilisateur) ─────────────────────────────────────
+  runAllJobId = signal('');
+  runAllApps = signal<string[]>([]);
+  runAllBusy = signal(false);
+  runAllError = signal<EngineError | null>(null);
+
+  /** Lance le test de cloisonnement de chaque projet qui en a un ; c'est le moteur qui les enchaîne. */
+  runAll(): void {
+    if (this.runAllBusy() || this.runAllJobId()) return;
+    this.runAllBusy.set(true);
+    this.runAllError.set(null);
+    this.engine.runAllTests().subscribe({
+      next: r => { this.runAllBusy.set(false); this.runAllApps.set(r.apps ?? []); this.runAllJobId.set(r.job_id); },
+      error: err => {
+        const e = toEngineError(err);
+        this.runAllBusy.set(false);
+        this.runAllError.set(e);
+        if (e.code === 'job_exists' && e.jobId) this.runAllJobId.set(e.jobId);
+      },
+    });
+  }
+
+  onRunAllDone(): void { this.loadProjects(); }
 
   /** Filtre de confort : utile au superutilisateur, qui a une vingtaine de lignes. */
   filter = signal('');
