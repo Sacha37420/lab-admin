@@ -303,8 +303,13 @@ export interface TicketRequest { title: string; body: string; scope: 'app' | 'la
 export interface Ticket { repository: string; number: number; url: string; }
 export interface AutoDeploy { app: string; enabled: boolean; available: boolean; }
 
+/** Ce qu'on ouvre dans l'espace (contrat espace-chat I3). Absent côté moteur ⇒ `editor`. */
+export type WorkspaceTarget = 'editor' | 'chat-claude' | 'chat-vibe';
+
 export interface WorkspaceOpened {
   url: string;
+  /** La cible retenue par le moteur (I3) ; absente d'un moteur antérieur. */
+  target?: WorkspaceTarget;
   uid: string;
   app: string;
   reused: boolean;
@@ -550,7 +555,10 @@ export class EngineClient {
   }
 
   // §3.6
-  workspaceOpen(app: string): Observable<WorkspaceOpened> { return this.call('POST', `/projects/${seg(app)}/workspace`); }
+  /** Éditeur : sans corps, comme avant I3. Conversation : `{"target": "chat-claude" | "chat-vibe"}`. */
+  workspaceOpen(app: string, target: WorkspaceTarget = 'editor'): Observable<WorkspaceOpened> {
+    return this.call('POST', `/projects/${seg(app)}/workspace`, target === 'editor' ? undefined : { target });
+  }
   workspaceClose(app: string): Observable<{ app: string; closed: boolean }> {
     return this.call('DELETE', `/projects/${seg(app)}/workspace`);
   }
@@ -725,6 +733,34 @@ function isLabToolUrl(url: unknown, origin: string, prefix: string): url is stri
 export function isWorkspaceUrl(url: unknown, origin: string): url is string {
   return isLabToolUrl(url, origin, '/ws/');
 }
+
+/** L'assistant attendu dans l'URL d'une conversation (espace-chat I3). */
+const CHAT_AGENT: Record<Exclude<WorkspaceTarget, 'editor'>, string> = { 'chat-claude': 'claude', 'chat-vibe': 'vibe' };
+
+/**
+ * L'URL rendue est-elle bien celle de la cible DEMANDÉE (espace-chat I3) ?
+ * Éditeur : `/ws/<uid>/…` hors `_chat`. Conversation : exactement
+ * `/ws/<uid>/_chat/` avec `agent=claude|vibe`. Un moteur qui ignorerait
+ * `target` rendrait l'URL de l'éditeur : on ne l'ouvre pas à la place d'une
+ * conversation (sur un téléphone, ce serait VS Code dans l'onglet courant).
+ */
+export function isWorkspaceTargetUrl(url: unknown, origin: string, target: WorkspaceTarget): url is string {
+  if (!isWorkspaceUrl(url, origin)) return false;
+  const u = new URL(url);
+  const chat = /^\/ws\/[^/]+\/_chat\/$/.test(u.pathname);
+  if (target === 'editor') return !/^\/ws\/[^/]+\/_chat(\/|$)/.test(u.pathname);
+  return chat && u.searchParams.get('agent') === CHAT_AGENT[target];
+}
+
+/** Libellés des trois ouvertures — un seul endroit pour la liste et la page d'un projet. */
+export const WORKSPACE_TARGET_TEXT: Record<WorkspaceTarget, { label: string; opening: string; unexpected: string }> = {
+  'editor': { label: 'VS Code', opening: "Ouverture de l'éditeur… (jusqu'à 30 secondes)",
+              unexpected: "Le moteur a rendu une adresse d'éditeur inattendue : elle n'a pas été ouverte." },
+  'chat-claude': { label: 'Claude Code', opening: "Ouverture de la conversation Claude Code… (jusqu'à 30 secondes)",
+                   unexpected: "Le moteur a rendu une adresse de conversation inattendue : elle n'a pas été ouverte." },
+  'chat-vibe': { label: 'Mistral Vibe', opening: "Ouverture de la conversation Mistral Vibe… (jusqu'à 30 secondes)",
+                 unexpected: "Le moteur a rendu une adresse de conversation inattendue : elle n'a pas été ouverte." },
+};
 
 /** pgAdmin d'un dev : `/pg/` (I9). */
 export function isPgadminUrl(url: unknown, origin: string): url is string {

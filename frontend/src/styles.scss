@@ -495,9 +495,23 @@ fieldset.pj-fld { border: none; padding: 0; margin: 0; }
 }
 .pj-projects code { font-family: var(--font-mono); color: var(--accent-deep); }
 .pj-gap { display: inline-flex; align-items: center; gap: var(--space-2); }
-.pj-actions { flex-wrap: nowrap; }
+.pj-actions { flex-wrap: wrap; justify-content: flex-end; max-width: 100%; }
+/* Les trois ouvertures d'un projet (VS Code, Claude Code, Mistral Vibe) : un groupe, jamais éclaté. */
+.pj-open { display: inline-flex; align-items: stretch; gap: var(--space-2); min-width: 0; }
+.pj-open > .btn-secondary { white-space: nowrap; }
 @media (max-width: 899px) {
   .pj-actions { flex-wrap: wrap; width: 100%; > * { flex: 1 1 auto; } }
+  /* Téléphone : trois colonnes égales sur toute la largeur ; le libellé passe sur deux lignes
+     plutôt que de déborder (390 px : ~100 px par bouton). */
+  .pj-actions > .pj-open {
+    order: -1; flex: 1 1 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    > .btn-secondary {
+      min-width: 0; padding: var(--space-1) var(--space-2);
+      white-space: normal; text-align: center; line-height: 1.25; overflow-wrap: anywhere;
+    }
+  }
+  /* Page d'un projet : un bouton par ligne, pleine largeur. */
+  .pj-open-row > button { flex: 1 1 100%; }
   .pj-toolbar-actions { margin-left: 0; width: 100%; > * { flex: 1 1 auto; } }
 }
 

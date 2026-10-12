@@ -181,6 +181,10 @@
       } @else {
         @if (projectsError()) { <p class="pj-error" role="alert">{{ projectsError() }}</p> }
         @if (visible().length === 0) { <div class="pj-state">Aucun projet ne correspond à « {{ filter() }} ».</div> }
+        @else {
+          <p class="pj-hint"><strong>VS Code</strong> ouvre l'éditeur complet ; <strong>Claude Code</strong> et
+            <strong>Mistral Vibe</strong> ouvrent la conversation seule, pensée pour le téléphone.</p>
+        }
         @for (section of sections(); track section.key) {
           <div class="pj-section" [attr.data-kind]="section.key">
             @if (section.title) {
@@ -235,8 +239,16 @@
                 </div>
                 <div class="pj-row pj-actions">
                   @if (p.urls.app; as u) { <a class="btn-secondary" [href]="u" target="_blank" rel="noopener">App ↗</a> }
-                  <button type="button" class="btn-secondary" (click)="openWorkspace(p)" [disabled]="!!wsBusy()"
-                          [attr.aria-label]="'Ouvrir ' + p.name + ' dans VS Code'">{{ wsBusy() === p.name ? 'Démarrage…' : 'VS Code' }}</button>
+                  <span class="pj-open" role="group" [attr.aria-label]="'Ouvrir ' + p.name">
+                    <button type="button" class="btn-secondary" (click)="openWorkspace(p)" [disabled]="!!wsBusy()"
+                            [attr.aria-label]="'Ouvrir ' + p.name + ' dans VS Code'">{{ wsLabel(p, 'editor') }}</button>
+                    <button type="button" class="btn-secondary" (click)="openWorkspace(p, 'chat-claude')" [disabled]="!!wsBusy()"
+                            title="Conversation seule, pensée pour le téléphone"
+                            [attr.aria-label]="'Ouvrir la conversation Claude Code de ' + p.name">{{ wsLabel(p, 'chat-claude') }}</button>
+                    <button type="button" class="btn-secondary" (click)="openWorkspace(p, 'chat-vibe')" [disabled]="!!wsBusy()"
+                            title="Conversation seule, pensée pour le téléphone"
+                            [attr.aria-label]="'Ouvrir la conversation Mistral Vibe de ' + p.name">{{ wsLabel(p, 'chat-vibe') }}</button>
+                  </span>
                   <a class="btn-primary" [routerLink]="['/projets', p.name]" [attr.aria-label]="'Détail de ' + p.name">Détail</a>
                 </div>
               </li>

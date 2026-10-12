@@ -8,11 +8,12 @@ import { EngineService } from '../../core/engine.service';
 import { KeycloakService } from '../../core/keycloak.service';
 import {
   APP_NAME_RE, DevSummary, EngineError, Group, Job, Me, NameCheck, Profile, Project, ProjectType,
-  cloisonnementLabel, githubGapLabel, isWorkspaceUrl, projectSections,
+  WORKSPACE_TARGET_TEXT, WorkspaceTarget,
+  cloisonnementLabel, githubGapLabel, isWorkspaceTargetUrl, projectSections,
   profileOf, stateLabel, toEngineError,
 } from '../../core/engine.client';
 import { JobSuiviComponent } from '../../shared/job-suivi/job-suivi.component';
-import { preopenTab, sendTab } from '../../core/tool-tab';
+import { beginOpening } from '../../core/tool-tab';
 import { DATE_FORMAT, shortSha } from '../../core/format';
 import { DashboardComponent } from '../dashboard/dashboard.component';
 
@@ -209,34 +210,47 @@ export class MesProjetsComponent implements OnInit {
   /** « Applications déployées » / « Outils du lab », ou une seule liste si le moteur ne dit pas la nature. */
   sections = computed(() => projectSections(this.visible()));
 
-  // ── VS Code depuis la liste ────────────────────────────────────────────────
+  // ── VS Code et conversations depuis la liste ───────────────────────────────
 
   wsBusy = signal('');
+  /** Laquelle des trois ouvertures est en cours (pour le libellé du bon bouton). */
+  wsTarget = signal<WorkspaceTarget>('editor');
   wsError = signal<{ app: string; error: EngineError } | null>(null);
   wsNotice = signal<{ app: string; text: string } | null>(null);
 
-  /** Même ouverture sécurisée que sur la page du projet (voir core/tool-tab.ts). */
-  openWorkspace(p: Project): void {
+  /**
+   * Même ouverture sécurisée que sur la page du projet (voir core/tool-tab.ts).
+   * `target` : l'éditeur (défaut) ou une conversation seule (espace-chat I3) —
+   * même appel au moteur, mêmes états, mêmes erreurs ; seule l'URL rendue change.
+   */
+  openWorkspace(p: Project, target: WorkspaceTarget = 'editor'): void {
     if (this.wsBusy()) return;
     this.wsBusy.set(p.name);
+    this.wsTarget.set(target);
     this.wsError.set(null);
     this.wsNotice.set(null);
-    const tab = preopenTab("Ouverture de l'éditeur… (jusqu'à 30 secondes)");
-    this.engine.workspaceOpen(p.name).subscribe({
+    const text = WORKSPACE_TARGET_TEXT[target];
+    const opening = beginOpening(text.opening, target !== 'editor');
+    this.engine.workspaceOpen(p.name, target).subscribe({
       next: opened => {
         this.wsBusy.set('');
-        if (!isWorkspaceUrl(opened.url, window.location.origin)) {
-          tab?.close();
-          this.wsNotice.set({ app: p.name, text: "Adresse d'éditeur inattendue : elle n'a pas été ouverte." });
+        if (!isWorkspaceTargetUrl(opened.url, window.location.origin, target)) {
+          opening.cancel();
+          this.wsNotice.set({ app: p.name, text: text.unexpected });
           return;
         }
         this.projects.update(list => list.map(x => ({ ...x, workspace: { open: x.name === p.name && x.owner === p.owner } })));
-        if (!sendTab(tab, opened.url)) {
+        if (opening.deliver(opened.url) === 'blocked') {
           this.wsNotice.set({ app: p.name, text: 'Le navigateur a bloqué le nouvel onglet : autorisez les fenêtres surgissantes pour ce site, puis recommencez.' });
         }
       },
-      error: err => { this.wsBusy.set(''); tab?.close(); this.wsError.set({ app: p.name, error: toEngineError(err) }); },
+      error: err => { this.wsBusy.set(''); opening.cancel(); this.wsError.set({ app: p.name, error: toEngineError(err) }); },
     });
+  }
+
+  /** Libellé d'un des trois boutons : « Démarrage… » sur celui qui a été pressé. */
+  wsLabel(p: Project, target: WorkspaceTarget): string {
+    return this.wsBusy() === p.name && this.wsTarget() === target ? 'Démarrage…' : WORKSPACE_TARGET_TEXT[target].label;
   }
 
   /** Messages en clair pour les refus attendus ; sinon la phrase du lab. */

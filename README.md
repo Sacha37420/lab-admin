@@ -31,6 +31,11 @@ Précisions :
   automatique, journaux, test de cloisonnement, variables d'environnement, base de données et
   console SQL, compte d'envoi d'email, ouverture de l'éditeur (VS Code dans le navigateur),
   ouverture d'un ticket.
+- **Trois ouvertures par projet**, dans la liste comme sur la page du projet : « VS Code »
+  (l'éditeur complet), « Claude Code » et « Mistral Vibe » (la conversation seule avec
+  l'assistant, pensée pour le téléphone). C'est le même appel au moteur, avec une cible ; mêmes
+  attentes et mêmes refus. Une conversation s'ouvre dans l'onglet courant sur un écran de moins
+  de 900 px, dans un nouvel onglet au-delà (`core/tool-tab.ts`, `beginOpening`).
 - **Projets** est en deux sections quand le moteur indique la nature de chaque projet : « Projets
   de déploiement » et « Outils de dev ». Chaque ligne donne l'état, la version en service, l'écart
   avec GitHub et le dernier verdict du test de cloisonnement (détail des cas à la demande). Un
@@ -129,7 +134,9 @@ Deux autres précautions tenues dans le code : l'adresse de retour après la con
 demandée, prise dans l'adresse courante et jamais dans un paramètre (`core/redirect-uri.ts`) ;
 l'adresse d'un éditeur ou d'un pgAdmin rendue par le moteur n'est suivie que si elle est sur
 l'origine du lab, en https, sous le chemin attendu, et n'est ni gardée ni affichée
-(`core/tool-tab.ts`, `isWorkspaceUrl` / `isPgadminUrl`).
+(`core/tool-tab.ts`, `isWorkspaceUrl` / `isPgadminUrl`) ; pour un espace, elle doit en plus être
+celle de la cible demandée — une adresse d'éditeur n'est jamais ouverte à la place d'une
+conversation (`isWorkspaceTargetUrl`).
 
 ## Où sont les choses
 

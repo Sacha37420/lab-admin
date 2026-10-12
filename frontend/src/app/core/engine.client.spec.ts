@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { Observable, firstValueFrom, lastValueFrom, of, throwError, toArray } from 'rxjs';
 import {
   EngineClient, EngineRequest, Job, Me, deployVerdicts, profileOf, repoPage, testCases,
-  toEngineError, cloisonnementLabel, envRows, runAllSummary, projectSections, smtpIsStale, smtpBody, smtpProblems, SMTP_DEFAULT_PORT, githubGapLabel, projectCounts, Project, ENV_KEY_RE, APP_NAME_RE, isPgadminUrl, isWorkspaceUrl, stateLabel, verdictLabel,
+  toEngineError, cloisonnementLabel, envRows, runAllSummary, projectSections, smtpIsStale, smtpBody, smtpProblems, SMTP_DEFAULT_PORT, githubGapLabel, projectCounts, Project, ENV_KEY_RE, APP_NAME_RE, isPgadminUrl, isWorkspaceUrl, isWorkspaceTargetUrl, WORKSPACE_TARGET_TEXT, stateLabel, verdictLabel,
 } from './engine.client';
 
 function recorder(reply: (req: EngineRequest) => Observable<unknown> = () => of({})) {
@@ -77,6 +77,12 @@ test('chaque route : méthode, chemin, corps, paramètres', async () => {
   assert.deepEqual(await run(client.setAutoDeploy('mon-app', true)),
     { method: 'PUT', path: '/projects/mon-app/auto-deploy', body: { enabled: true } });
   assert.deepEqual(await run(client.workspaceOpen('mon-app')), { method: 'POST', path: '/projects/mon-app/workspace' });
+  // espace-chat I3 : l'éditeur reste SANS corps ; une conversation porte sa cible.
+  assert.deepEqual(await run(client.workspaceOpen('mon-app', 'editor')), { method: 'POST', path: '/projects/mon-app/workspace' });
+  assert.deepEqual(await run(client.workspaceOpen('mon-app', 'chat-claude')),
+    { method: 'POST', path: '/projects/mon-app/workspace', body: { target: 'chat-claude' } });
+  assert.deepEqual(await run(client.workspaceOpen('mon-app', 'chat-vibe')),
+    { method: 'POST', path: '/projects/mon-app/workspace', body: { target: 'chat-vibe' } });
   assert.deepEqual(await run(client.workspaceClose('mon-app')), { method: 'DELETE', path: '/projects/mon-app/workspace' });
   assert.deepEqual(await run(client.job('d359abbb4186de01')),
     { method: 'GET', path: '/jobs/d359abbb4186de01', params: { tail: '200' } });
@@ -110,6 +116,33 @@ test('I9 : formes exactes, erreurs nommées, adresse de pgAdmin', async () => {
     assert.equal(isPgadminUrl(bad, origin), false, String(bad));
   }
   assert.equal(isWorkspaceUrl('https://lab.example.org/pg/hassan/', origin), false);
+});
+
+test("l'URL rendue doit être celle de la cible demandée (espace-chat I3)", () => {
+  const origin = 'https://lab.example.org';
+  const editor = 'https://lab.example.org/ws/hassan/?ticket=abc';
+  const claude = 'https://lab.example.org/ws/hassan/_chat/?agent=claude&ticket=abc';
+  const vibe = 'https://lab.example.org/ws/hassan/_chat/?agent=vibe&ticket=abc';
+  assert.ok(isWorkspaceTargetUrl(editor, origin, 'editor'));
+  assert.ok(isWorkspaceTargetUrl(claude, origin, 'chat-claude'));
+  assert.ok(isWorkspaceTargetUrl(vibe, origin, 'chat-vibe'));
+  // Un moteur qui ignore `target` rend l'éditeur : jamais ouvert à la place d'une conversation.
+  assert.equal(isWorkspaceTargetUrl(editor, origin, 'chat-claude'), false);
+  assert.equal(isWorkspaceTargetUrl(editor, origin, 'chat-vibe'), false);
+  // Ni l'inverse, ni un assistant pour l'autre.
+  assert.equal(isWorkspaceTargetUrl(claude, origin, 'editor'), false);
+  assert.equal(isWorkspaceTargetUrl('https://lab.example.org/ws/hassan/_chat?ticket=abc', origin, 'editor'), false);
+  assert.equal(isWorkspaceTargetUrl(claude, origin, 'chat-vibe'), false);
+  assert.equal(isWorkspaceTargetUrl(vibe, origin, 'chat-claude'), false);
+  for (const bad of ['https://evil.example/ws/hassan/_chat/?agent=claude&ticket=abc',
+                     'http://lab.example.org/ws/hassan/_chat/?agent=claude',
+                     'https://lab.example.org/ws/hassan/_chat/?ticket=abc',                 // pas d'assistant
+                     'https://lab.example.org/ws/hassan/_chat/autre?agent=claude',          // autre chemin
+                     'https://lab.example.org/ws/_chat/?agent=claude',                      // pas d'uid
+                     'https://lab.example.org/pg/hassan/_chat/?agent=claude', 'javascript:alert(1)', '', null, undefined]) {
+    assert.equal(isWorkspaceTargetUrl(bad, origin, 'chat-claude'), false, String(bad));
+  }
+  assert.deepEqual(Object.keys(WORKSPACE_TARGET_TEXT).sort(), ['chat-claude', 'chat-vibe', 'editor']);
 });
 
 test('un nom ou une clé piégés ne changent pas de route', async () => {

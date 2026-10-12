@@ -28,9 +28,21 @@
           son terminal (vos propres comptes). Un seul éditeur à la fois par personne ; il se ferme
           après 30 minutes sans activité, sans rien perdre.
         </p>
-        <div class="pj-row">
+        <p class="pj-hint">
+          <strong>Claude Code</strong> et <strong>Mistral Vibe</strong> ouvrent la conversation seule,
+          pensée pour le téléphone : même projet, même espace, mêmes limites, sans l'éditeur autour.
+        </p>
+        <div class="pj-row pj-open-row">
           <button type="button" class="btn-primary" (click)="openWorkspace()" [disabled]="wsBusy()">
-            {{ wsBusy() ? 'Démarrage… (jusqu\'à 30 s)' : 'Ouvrir dans VS Code' }}
+            {{ wsLabel('editor', 'Ouvrir dans VS Code') }}
+          </button>
+          <button type="button" class="btn-secondary" (click)="openWorkspace('chat-claude')" [disabled]="wsBusy()"
+                  aria-label="Ouvrir la conversation Claude Code de ce projet">
+            {{ wsLabel('chat-claude', 'Claude Code') }}
+          </button>
+          <button type="button" class="btn-secondary" (click)="openWorkspace('chat-vibe')" [disabled]="wsBusy()"
+                  aria-label="Ouvrir la conversation Mistral Vibe de ce projet">
+            {{ wsLabel('chat-vibe', 'Mistral Vibe') }}
           </button>
           @if (p.workspace.open) {
             <button type="button" class="pj-danger" (click)="closeWorkspace()" [disabled]="wsBusy()">Fermer l'éditeur</button>

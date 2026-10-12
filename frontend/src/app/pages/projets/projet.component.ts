@@ -6,9 +6,10 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { EngineService } from '../../core/engine.service';
 import {
   Commits, EngineError, Job, Logs, Me, ProjectDetail, SqlCell, SqlResult,
-  Ticket, WorkspaceOpened, isWorkspaceUrl, repoPage, stateLabel, toEngineError, verdictLabel,
+  Ticket, WORKSPACE_TARGET_TEXT, WorkspaceOpened, WorkspaceTarget, isWorkspaceTargetUrl, repoPage, stateLabel,
+  toEngineError, verdictLabel,
 } from '../../core/engine.client';
-import { preopenTab, sendTab } from '../../core/tool-tab';
+import { beginOpening } from '../../core/tool-tab';
 import { JobSuiviComponent } from '../../shared/job-suivi/job-suivi.component';
 import { EnvVarsComponent } from '../../shared/env-vars/env-vars.component';
 import { DATE_FORMAT, shortSha } from '../../core/format';
@@ -86,6 +87,8 @@ export class ProjetComponent implements OnInit {
 
   // Espace de travail
   wsBusy = signal(false);
+  /** Laquelle des trois ouvertures est en cours (pour le libellé du bon bouton). */
+  wsTarget = signal<WorkspaceTarget | null>(null);
   /** L'état de l'espace ouvert — sans son URL à ticket, qui n'est ni gardée ni affichée. */
   wsOpened = signal<WorkspaceOpened['workspace'] | null>(null);
   wsError = signal<EngineError | null>(null);
@@ -237,33 +240,44 @@ export class ProjetComponent implements OnInit {
    * navigateur le bloque : la réponse du moteur peut prendre ~30 s), puis
    * dirigé vers l'URL à ticket dès qu'elle arrive. Le ticket est à usage
    * unique et ne vit que 60 s : l'URL n'est ni gardée ni réaffichée.
+   *
+   * `target` : l'éditeur (défaut) ou une conversation seule (espace-chat I3) —
+   * même appel, mêmes états, mêmes erreurs. Une conversation s'ouvre dans
+   * l'onglet courant sur un petit écran (voir `beginOpening`).
    */
-  openWorkspace(): void {
+  openWorkspace(target: WorkspaceTarget = 'editor'): void {
     if (this.wsBusy()) return;
     this.wsBusy.set(true);
+    this.wsTarget.set(target);
     this.wsError.set(null);
     this.wsNotice.set('');
-    const tab = preopenTab('Ouverture de l\'éditeur…');
-    this.engine.workspaceOpen(this.app).subscribe({
+    const text = WORKSPACE_TARGET_TEXT[target];
+    const opening = beginOpening(text.opening, target !== 'editor');
+    this.engine.workspaceOpen(this.app, target).subscribe({
       next: opened => {
         this.wsBusy.set(false);
-        if (!isWorkspaceUrl(opened.url, window.location.origin)) {
-          tab?.close();
-          this.wsNotice.set("Le moteur a rendu une adresse d'éditeur inattendue : elle n'a pas été ouverte.");
+        if (!isWorkspaceTargetUrl(opened.url, window.location.origin, target)) {
+          opening.cancel();
+          this.wsNotice.set(text.unexpected);
           return;
         }
         this.wsOpened.set(opened.workspace);
         this.project.update(p => p ? { ...p, workspace: { open: true } } : p);
-        if (!sendTab(tab, opened.url)) {
+        if (opening.deliver(opened.url) === 'blocked') {
           this.wsNotice.set('Le navigateur a bloqué le nouvel onglet : autorisez les fenêtres surgissantes pour ce site, puis cliquez de nouveau.');
         }
       },
       error: err => {
         this.wsBusy.set(false);
-        tab?.close();
+        opening.cancel();
         this.wsError.set(toEngineError(err));
       },
     });
+  }
+
+  /** Libellé d'un des trois boutons : l'attente s'affiche sur celui qui a été pressé. */
+  wsLabel(target: WorkspaceTarget, idle: string): string {
+    return this.wsBusy() && this.wsTarget() === target ? 'Démarrage… (jusqu\'à 30 s)' : idle;
   }
 
   closeWorkspace(): void {
