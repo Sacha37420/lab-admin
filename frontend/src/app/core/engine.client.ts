@@ -26,7 +26,9 @@ export type EngineErrorCode =
   // I10 (contrat v9)
   | 'smtp_in_use' | 'smtp_error' | 'rate_limited'
   // lecture d'une variable d'environnement gérée par le lab
-  | 'managed_key';
+  | 'managed_key'
+  // adresse d'essai (chantier essai-dev, I2)
+  | 'no_workspace';
 
 /**
  * Erreur normalisée. `code` vaut un `EngineErrorCode`, ou l'un des deux codes
@@ -261,7 +263,7 @@ export interface NameCheck { ok: boolean; reasons: string[]; }
 
 // ── §3.3 – §3.6 ───────────────────────────────────────────────────────────────
 
-export type JobKind = 'create' | 'deploy' | 'tests' | 'tests_all';
+export type JobKind = 'create' | 'deploy' | 'tests' | 'tests_all' | 'preview';
 export type JobState = 'queued' | 'running' | 'succeeded' | 'failed';
 export interface JobTicket { job_id: string; kind: JobKind; app: string; state: JobState; jobs_ahead: number; }
 
@@ -418,6 +420,129 @@ export function smtpProblems(form: SmtpInput): string[] {
   return out;
 }
 
+// ── Adresse d'essai (chantier essai-dev, contrat v1, I2) ─────────────────────
+
+/** `absent` : jamais construit ou démonté · `degraded` : au moins un service ne tourne pas. */
+export type PreviewState = 'absent' | 'running' | 'degraded' | 'stopped';
+export interface PreviewService { service: string; state: 'running' | 'starting' | 'exited' | 'unhealthy' | string; }
+
+/**
+ * L'objet « essai » (I2), le même sur les trois routes et dans le résultat du
+ * job. L'adresse appartient au PROPRIÉTAIRE du projet et ne montre qu'un projet
+ * à la fois : `current` dit si c'est celui qu'on a demandé ; sinon `app` nomme
+ * celui qu'elle montre (ou vaut `null` : elle ne montre rien).
+ */
+export interface Preview {
+  state: PreviewState | string;
+  current: boolean;
+  app: string | null;
+  /** `null` pour une app sans frontend. */
+  url: string | null;
+  /** `null` pour une app sans backend. */
+  api_url: string | null;
+  groups: string[];
+  built_at: string | null;
+  /** `built_at` + durée de vie ; `null` si `state` vaut `absent`. */
+  expires_at: string | null;
+  services: PreviewService[];
+}
+
+export interface PreviewStopped { app: string; stopped: boolean; }
+
+function dateStr(v: unknown): string | null {
+  return typeof v === 'string' && v !== '' && !Number.isNaN(Date.parse(v)) ? v : null;
+}
+
+/**
+ * L'objet essai tel que la page l'affiche : SEULS les champs du contrat sont
+ * repris, chacun au type attendu. Une réponse abîmée donne un essai `absent`
+ * et jamais une exception ; `current` ne vaut `true` que sur un `true` exact
+ * (une adresse n'est jamais présentée comme celle de ce projet par défaut).
+ */
+export function toPreview(raw: unknown): Preview {
+  const o = (raw !== null && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const services: PreviewService[] = [];
+  if (Array.isArray(o['services'])) {
+    for (const s of o['services']) {
+      if (!s || typeof s !== 'object') continue;
+      const name = str((s as Record<string, unknown>)['service']);
+      if (name) services.push({ service: name, state: str((s as Record<string, unknown>)['state']) ?? 'inconnu' });
+    }
+  }
+  return {
+    state: str(o['state']) ?? 'absent',
+    current: o['current'] === true,
+    app: str(o['app']),
+    url: str(o['url']),
+    api_url: str(o['api_url']),
+    groups: Array.isArray(o['groups']) ? o['groups'].filter((g): g is string => typeof g === 'string' && g !== '') : [],
+    built_at: dateStr(o['built_at']),
+    expires_at: dateStr(o['expires_at']),
+    services,
+  };
+}
+
+/** L'adresse montre-t-elle un AUTRE projet du même propriétaire ? Rend son nom, sinon `null`. */
+export function previewOtherApp(p: Preview): string | null {
+  return !p.current && p.app && p.state !== 'absent' ? p.app : null;
+}
+
+/** L'adresse montre-t-elle ce projet (construit, quel que soit l'état de ses services) ? */
+export function previewShowsThis(p: Preview): boolean {
+  return p.current && p.state !== 'absent';
+}
+
+export function previewStateLabel(state: string): { label: string; tone: '' | 'ok' | 'warn' | 'ko' } {
+  switch (state) {
+    case 'running': return { label: 'en service', tone: 'ok' };
+    case 'degraded': return { label: 'dégradé', tone: 'warn' };
+    case 'stopped': return { label: 'arrêté', tone: 'ko' };
+    case 'absent': return { label: 'aucun essai', tone: '' };
+    default: return { label: state, tone: 'warn' };
+  }
+}
+
+export function previewServiceTone(state: string): 'ok' | 'warn' | 'ko' {
+  return state === 'running' ? 'ok' : state === 'starting' ? 'warn' : 'ko';
+}
+
+/**
+ * Pourquoi le bloc n'a rien à proposer, quand ce n'est pas une panne :
+ *  - `no_domain` : `503 unavailable`, le lab n'a pas de nom de domaine (pas
+ *    d'essai en HTTP local) ;
+ *  - `not_served` : `404` sur une route d'essai d'un projet QUI EXISTE (sa page
+ *    est chargée) — le moteur en service ne connaît pas encore ces routes, que
+ *    le 404 vienne de lui (`not_found`) ou du proxy (`no_engine`).
+ * `null` : une vraie erreur, à afficher.
+ */
+export function previewUnavailable(e: EngineError): 'no_domain' | 'not_served' | null {
+  if (e.code === 'unavailable') return 'no_domain';
+  if (e.status === 404) return 'not_served';
+  return null;
+}
+
+export const PREVIEW_UNAVAILABLE_TEXT: Record<'no_domain' | 'not_served', string> = {
+  no_domain: "Pas d'adresse d'essai sur ce lab : il n'a pas de nom de domaine.",
+  not_served: "L'adresse d'essai n'est pas encore disponible sur ce lab.",
+};
+
+/** Phrase d'un refus de construire ou d'arrêter. `no_workspace` : on dit quoi faire. */
+export function previewErrorText(e: EngineError): string {
+  if (e.code === 'no_workspace') {
+    return "Ce projet n'a pas encore de dossier de travail : ouvrez d'abord son espace (« Ouvrir dans VS Code », plus haut), puis construisez l'essai.";
+  }
+  return e.detail;
+}
+
+/**
+ * Une adresse d'essai rendue par le moteur ne devient un lien que si elle est
+ * en https ET sur l'origine du lab ; sinon elle est montrée en texte brut.
+ */
+export function isPreviewUrl(url: unknown, origin: string): url is string {
+  if (typeof url !== 'string' || !url.startsWith('https://')) return false;
+  return isLabToolUrl(url, origin, '/');
+}
+
 // ── §4 Jobs ───────────────────────────────────────────────────────────────────
 
 export interface JobTestCase { title: string; status: 'PASSED' | 'FAILED' | 'ERROR'; message: string; duration_ms: number; }
@@ -443,6 +568,8 @@ export interface JobResult {
   found?: boolean;
   all_passed?: boolean;
   summary?: string;
+  /** `preview` réussi : l'objet essai (essai-dev I2). À passer par `toPreview()`. */
+  preview?: unknown;
 }
 
 export interface Job {
@@ -592,6 +719,13 @@ export class EngineClient {
   projectSmtp(app: string, profile: string | null, apply: 'now' | 'next_deploy'): Observable<SmtpAttach> {
     return this.call('PUT', `/projects/${seg(app)}/smtp`, { profile, apply });
   }
+
+  // Adresse d'essai (essai-dev I2). Le type de retour de la lecture est `unknown` à dessein : `toPreview()`.
+  previewStatus(app: string): Observable<unknown> { return this.call('GET', `/projects/${seg(app)}/preview`); }
+  /** Sans corps. Rend un ticket de job (`kind: "preview"`), à suivre comme les autres. */
+  previewDeploy(app: string): Observable<JobTicket> { return this.call('POST', `/projects/${seg(app)}/preview`); }
+  /** `stopped: false` : l'adresse ne montrait pas ce projet, rien n'a été arrêté. */
+  previewStop(app: string): Observable<PreviewStopped> { return this.call('DELETE', `/projects/${seg(app)}/preview`); }
 
   // §4
   job(id: string, tail = 200): Observable<Job> {

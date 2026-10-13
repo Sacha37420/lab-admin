@@ -365,6 +365,7 @@ code, pre, .mono { font-family: var(--font-mono); }
 .pj-hint { color: var(--text-mute); font-size: var(--text-sm); line-height: 1.5; }
 .pj-error { color: var(--danger); font-size: var(--text-sm); line-height: 1.5; }
 .pj-success { color: var(--success); font-size: var(--text-sm); }
+.pj-warn-text { color: var(--warning); font-size: var(--text-sm); line-height: 1.5; }
 .pj-reasons { margin: 0; padding-left: var(--space-5); color: var(--danger); font-size: var(--text-sm); }
 
 .pj-badge {

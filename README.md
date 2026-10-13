@@ -192,7 +192,10 @@ frontend/src/app/
     ma-base/          base de données, mot de passe à la demande, pgAdmin personnel
     email/            comptes d'envoi (page Services) et choix du compte d'un projet
     env-vars/         variables d'environnement d'un projet, valeur à la demande
-    job-suivi/        suivi d'une création, d'un déploiement, d'un test
+    job-suivi/        suivi d'une création, d'un déploiement, d'un test, de la construction d'un essai
+    essai/            adresse d'essai d'un projet (/dev-<uid>/) : état, construire, arrêter —
+                      le dossier de travail non commité, sans tests, avec sa propre base ;
+                      une adresse du moteur n'y devient un lien qu'en https et sur l'origine du lab
     confirm-dialog/   demande de confirmation (remplace les boîtes natives du navigateur)
 frontend/src/styles.scss   couleurs, espacements et polices en variables CSS ; aucun composant
                            ne porte de couleur en dur

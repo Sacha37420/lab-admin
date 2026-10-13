@@ -13,6 +13,8 @@ import { Observable, firstValueFrom, lastValueFrom, of, throwError, toArray } fr
 import {
   EngineClient, EngineRequest, Job, Me, deployVerdicts, profileOf, repoPage, testCases,
   toEngineError, cloisonnementLabel, envRows, runAllSummary, projectSections, smtpIsStale, smtpBody, smtpProblems, SMTP_DEFAULT_PORT, githubGapLabel, projectCounts, Project, ENV_KEY_RE, APP_NAME_RE, isPgadminUrl, isWorkspaceUrl, isWorkspaceTargetUrl, WORKSPACE_TARGET_TEXT, stateLabel, verdictLabel,
+  toPreview, previewOtherApp, previewShowsThis, previewStateLabel, previewServiceTone, previewUnavailable,
+  previewErrorText, isPreviewUrl, PREVIEW_UNAVAILABLE_TEXT,
 } from './engine.client';
 
 function recorder(reply: (req: EngineRequest) => Observable<unknown> = () => of({})) {
@@ -405,4 +407,160 @@ test('cloisonnement : verdicts, et « Tout tester »', async () => {
   assert.equal(runAllSummary([]).allOk, false);              // rien de testé n'est pas « tout est bon »
   assert.equal(runAllSummary(undefined).allOk, false);
   assert.deepEqual(runAllSummary([{ verdict: 'non-lancé' }, { verdict: 'x' }]), { ok: 0, ko: 0, absent: 0, other: 2, allOk: false });
+});
+
+// ── Adresse d'essai (chantier essai-dev, contrat v1, I2) ─────────────────────
+// Réponses recopiées du contrat (`chantiers/essai-dev/CONTRAT.md` §4-I2), <DOMAIN> = lab.example.org.
+
+const ESSAI = {
+  state: 'running', current: true, app: 'mon-app',
+  url: 'https://lab.example.org/dev-hassan/', api_url: 'https://lab.example.org/dev-hassan-api/',
+  groups: ['developers'], built_at: '2026-10-13T15:02:11+02:00', expires_at: '2026-10-14T03:02:11+02:00',
+  services: [{ service: 'backend', state: 'running' }, { service: 'frontend', state: 'running' }],
+};
+const ESSAI_ABSENT = { state: 'absent', current: false, app: null, url: null, api_url: null,
+                       groups: [], built_at: null, expires_at: null, services: [] };
+
+test('essai I2 : les trois routes — méthode, chemin, jamais de corps ni de paramètre', async () => {
+  const { client, calls } = recorder();
+  const run = async (o: Observable<unknown>) => { await firstValueFrom(o); return calls.pop(); };
+  assert.deepEqual(await run(client.previewStatus('mon-app')), { method: 'GET', path: '/projects/mon-app/preview' });
+  assert.deepEqual(await run(client.previewDeploy('mon-app')), { method: 'POST', path: '/projects/mon-app/preview' });
+  assert.deepEqual(await run(client.previewStop('mon-app')), { method: 'DELETE', path: '/projects/mon-app/preview' });
+  // Un nom piégé ne change pas de route.
+  assert.equal((await run(client.previewDeploy('../../me/init')))?.path, '/projects/..%2F..%2Fme%2Finit/preview');
+  assert.equal((await run(client.previewStop('app?as=sacha')))?.path, '/projects/app%3Fas%3Dsacha/preview');
+  assert.equal(calls.length, 0);
+});
+
+test('essai I2 : ticket de job, arrêt, et résultat du job', async () => {
+  const ticket = { job_id: 'a1b2c3d4e5f60718', kind: 'preview', app: 'mon-app', state: 'queued', jobs_ahead: 0 };
+  const a = recorder(() => of(ticket));
+  const got = await firstValueFrom(a.client.previewDeploy('mon-app'));
+  assert.deepEqual([got.job_id, got.kind, got.state, got.jobs_ahead], ['a1b2c3d4e5f60718', 'preview', 'queued', 0]);
+
+  const b = recorder(() => of({ app: 'mon-app', stopped: true }));
+  assert.equal((await firstValueFrom(b.client.previewStop('mon-app'))).stopped, true);
+  const c = recorder(() => of({ app: 'mon-app', stopped: false }));     // l'adresse ne montrait pas ce projet
+  assert.equal((await firstValueFrom(c.client.previewStop('mon-app'))).stopped, false);
+
+  // Suivi : celui des autres jobs. Réussi → l'objet essai ; échoué → step de I1, error, reasons.
+  const done = job({ kind: 'preview', state: 'succeeded', terminal: true, step: 'done',
+                     result: { ok: true, step: 'done', preview: ESSAI } });
+  const d = recorder(() => of(done));
+  const last = await lastValueFrom(d.client.watchJob('a1b2c3d4e5f60718', 1));
+  assert.equal(last.result?.ok, true);
+  assert.deepEqual(toPreview(last.result?.preview), ESSAI);
+  const ko = job({ kind: 'preview', state: 'failed', terminal: true, step: 'validate', result: {
+    ok: false, step: 'validate', error: 'le dépôt est refusé par le contrôle de sûreté', reasons: ['[ports] …', '[bind] …'] } });
+  assert.deepEqual([ko.result?.step, ko.result?.reasons?.length], ['validate', 2]);
+  const bare = job({ kind: 'preview', state: 'failed', terminal: true, step: 'build', result: { ok: false, step: 'build', error: 'échec du build', reasons: [] } });
+  assert.deepEqual(bare.result?.reasons, []);                           // `reasons` éventuellement vide
+});
+
+test('essai I2 : objet essai — running, absent, current false', () => {
+  // running, c'est ce projet.
+  const run = toPreview(ESSAI);
+  assert.deepEqual(run, ESSAI);
+  assert.equal(previewShowsThis(run), true);
+  assert.equal(previewOtherApp(run), null);
+  assert.deepEqual(previewStateLabel(run.state), { label: 'en service', tone: 'ok' });
+
+  // absent : rien à montrer, pas de terme.
+  const none = toPreview(ESSAI_ABSENT);
+  assert.deepEqual(none, ESSAI_ABSENT);
+  assert.equal(previewShowsThis(none), false);
+  assert.equal(previewOtherApp(none), null);
+  assert.equal(none.expires_at, null);
+
+  // current false : l'adresse du propriétaire montre un AUTRE de ses projets.
+  const other = toPreview({ ...ESSAI, current: false, app: 'autre-app' });
+  assert.equal(previewShowsThis(other), false);
+  assert.equal(previewOtherApp(other), 'autre-app');
+  // current false et rien de montré.
+  assert.equal(previewOtherApp(toPreview({ ...ESSAI_ABSENT, current: false })), null);
+
+  // App sans backend / sans frontend : l'adresse absente vaut null.
+  assert.equal(toPreview({ ...ESSAI, api_url: null }).api_url, null);
+  assert.equal(toPreview({ ...ESSAI, url: null }).url, null);
+
+  // degraded et stopped restent « ce projet » : on peut les arrêter ou les reconstruire.
+  for (const state of ['degraded', 'stopped']) assert.equal(previewShowsThis(toPreview({ ...ESSAI, state })), true);
+  assert.equal(previewStateLabel('degraded').tone, 'warn');
+  assert.equal(previewStateLabel('stopped').tone, 'ko');
+  assert.deepEqual(previewStateLabel('absent'), { label: 'aucun essai', tone: '' });
+  assert.deepEqual(previewStateLabel('etat-futur'), { label: 'etat-futur', tone: 'warn' });   // jamais vert par défaut
+  assert.deepEqual(['running', 'starting', 'exited', 'unhealthy', 'x'].map(previewServiceTone), ['ok', 'warn', 'ko', 'ko', 'ko']);
+});
+
+test('essai I2 : une réponse abîmée donne « absent », seuls les champs du contrat sont repris', () => {
+  for (const bad of [undefined, null, 'x', 3, [], {}]) {
+    const p = toPreview(bad);
+    assert.deepEqual(p, ESSAI_ABSENT);
+    assert.equal(previewShowsThis(p), false);
+  }
+  const odd = toPreview({ ...ESSAI, current: 'true', groups: ['developers', 3, ''], built_at: 'pas une date',
+                          expires_at: 7, services: [null, { service: 'backend' }, { state: 'running' }, 'x'],
+                          secret: 'NE-DOIT-PAS-PASSER' });
+  assert.equal(odd.current, false);                                    // seul un `true` exact vaut « ce projet »
+  assert.deepEqual(odd.groups, ['developers']);
+  assert.deepEqual([odd.built_at, odd.expires_at], [null, null]);     // une date illisible ne casse pas l'affichage
+  assert.deepEqual(odd.services, [{ service: 'backend', state: 'inconnu' }]);
+  assert.equal(JSON.stringify(odd).includes('NE-DOIT-PAS-PASSER'), false);
+});
+
+test('essai I2 : chaque erreur immédiate', () => {
+  const err = (status: number, body: unknown) => toEngineError({ status, error: body });
+
+  const notFound = err(404, { error: 'not_found', detail: 'Projet introuvable.' });
+  assert.equal(notFound.code, 'not_found');
+  assert.equal(previewUnavailable(notFound), 'not_served');
+
+  const init = err(409, { error: 'not_initialized', detail: "Initialisez d'abord votre espace." });
+  assert.equal(init.code, 'not_initialized');
+  assert.equal(previewUnavailable(init), null);
+  assert.equal(previewErrorText(init), "Initialisez d'abord votre espace.");
+
+  const noWs = err(409, { error: 'no_workspace', detail: 'aucun dossier de travail pour ce projet' });
+  assert.equal(noWs.code, 'no_workspace');
+  assert.equal(previewUnavailable(noWs), null);
+  assert.match(previewErrorText(noWs), /ouvrez d'abord son espace/);
+
+  const exists = err(409, { error: 'job_exists', detail: 'Un job est déjà en cours.', job_id: 'a1b2c3d4e5f60718' });
+  assert.deepEqual([exists.code, exists.jobId], ['job_exists', 'a1b2c3d4e5f60718']);
+  assert.equal(previewUnavailable(exists), null);
+
+  const full = err(429, { error: 'queue_full', detail: "La file d'attente est pleine." });
+  assert.equal(full.code, 'queue_full');
+  assert.equal(previewErrorText(full), "La file d'attente est pleine.");
+
+  // Lab sans domaine : pas une panne, un message discret.
+  const noDomain = err(503, { error: 'unavailable', detail: "Le lab n'a pas de domaine." });
+  assert.equal(noDomain.code, 'unavailable');
+  assert.equal(previewUnavailable(noDomain), 'no_domain');
+
+  // Moteur en service qui ne connaît pas encore ces routes : 404, avec ou sans corps JSON.
+  assert.equal(previewUnavailable(err(404, '404 page not found')), 'not_served');
+  assert.equal(previewUnavailable(err(404, '')), 'not_served');
+  // Une vraie panne n'est pas maquillée en « pas encore disponible ».
+  for (const e of [err(0, null), err(502, 'Bad Gateway'), err(503, 'Service Unavailable'), err(500, 'boom'),
+                   err(403, { error: 'forbidden', detail: 'Non.' })]) {
+    assert.equal(previewUnavailable(e), null);
+  }
+  assert.deepEqual(Object.keys(PREVIEW_UNAVAILABLE_TEXT).sort(), ['no_domain', 'not_served']);
+});
+
+test("essai I2 : une adresse n'est un lien que en https et sur l'origine du lab", () => {
+  const origin = 'https://lab.example.org';
+  assert.ok(isPreviewUrl('https://lab.example.org/dev-hassan/', origin));
+  assert.ok(isPreviewUrl('https://lab.example.org/dev-hassan-api/', origin));
+  for (const bad of ['http://lab.example.org/dev-hassan/', 'https://evil.example/dev-hassan/',
+                     'https://lab.example.org.evil.io/dev-hassan/', 'https://lab.example.org@evil.example/dev-hassan/',
+                     'https://lab.example.org:8443/dev-hassan/', '//lab.example.org/dev-hassan/', '/dev-hassan/',
+                     'javascript:alert(1)', ' https://lab.example.org/dev-hassan/', 'HTTPS://lab.example.org/dev-hassan/',
+                     '', null, undefined, 42]) {
+    assert.equal(isPreviewUrl(bad, origin), false, String(bad));
+  }
+  // Lab servi en http (local) : aucune adresse d'essai n'y devient un lien.
+  assert.equal(isPreviewUrl('http://localhost:4201/dev-hassan/', 'http://localhost:4201'), false);
 });

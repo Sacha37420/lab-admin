@@ -6,7 +6,7 @@ import {
   DeployTests, EngineError, Job, JobTestCase, cloisonnementLabel, deployVerdicts, runAllSummary, testCases, toEngineError, verdictLabel,
 } from '../../core/engine.client';
 
-const KIND_LABELS: Record<Job['kind'], string> = { create: 'Création', deploy: 'Déploiement', tests: 'Tests', tests_all: 'Test de tous les projets' };
+const KIND_LABELS: Record<Job['kind'], string> = { create: 'Création', deploy: 'Déploiement', tests: 'Tests', tests_all: 'Test de tous les projets', preview: 'Essai' };
 const STATE_LABELS: Record<Job['state'], string> = {
   queued: 'en file d\'attente', running: 'en cours', succeeded: 'réussi', failed: 'échoué',
 };

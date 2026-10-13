@@ -60,6 +60,9 @@
         }
       </div>
 
+      <!-- ── Adresse d'essai (essai-dev I2) : actions seulement si ce projet est le mien ─ -->
+      <app-essai-projet [app]="p.name" [canAct]="!!me()?.uid && me()?.uid === p.owner" />
+
       <!-- ── Déploiement ──────────────────────────────────────────────────── -->
       <div class="pj-card">
         <h2>Déploiement</h2>

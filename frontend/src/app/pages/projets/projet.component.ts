@@ -15,6 +15,7 @@ import { EnvVarsComponent } from '../../shared/env-vars/env-vars.component';
 import { DATE_FORMAT, shortSha } from '../../core/format';
 import { MaBaseComponent } from '../../shared/ma-base/ma-base.component';
 import { EmailProjetComponent } from '../../shared/email/email-projet.component';
+import { EssaiProjetComponent } from '../../shared/essai/essai-projet.component';
 
 /**
  * Page d'un projet (`/projets/<app>`, contrat multi-dev I6) : tout ce qu'un
@@ -26,7 +27,7 @@ import { EmailProjetComponent } from '../../shared/email/email-projet.component'
 @Component({
   selector: 'app-projet',
   standalone: true,
-  imports: [FormsModule, RouterLink, DatePipe, JobSuiviComponent, MaBaseComponent, EmailProjetComponent, EnvVarsComponent],
+  imports: [FormsModule, RouterLink, DatePipe, JobSuiviComponent, MaBaseComponent, EmailProjetComponent, EnvVarsComponent, EssaiProjetComponent],
   templateUrl: './projet.component.html',
 })
 export class ProjetComponent implements OnInit {
