@@ -18,7 +18,7 @@ groupe `developers` ; ce qu'il voit ensuite dépend de ce qu'il est.
 |---|---|---|---|---|
 | **Accueil** `/` | présentation du lab, ses chiffres, son parcours, les règles | idem ; à la première visite, son espace est préparé automatiquement | présentation, règles | présentation, règles |
 | **Services** `/services` | services communs, sa base et son pgAdmin, ses comptes d'envoi d'email, accès pour ses assistants, interfaces d'administration | services communs, sa base et son pgAdmin, ses comptes d'envoi d'email, accès pour ses assistants | services communs, interfaces d'administration | services communs |
-| **Projets** `/projets` | tous les projets du lab avec leur propriétaire, vue d'un développeur donné, création, « Tout tester » ; puis le bloc « Conception » | ses projets, création | pas de liste, et la page dit pourquoi ; puis le bloc « Conception » | « aucun projet à votre nom » |
+| **Projets** `/projets` | tous les projets du lab avec leur propriétaire, vue d'un développeur donné, création, « Tout tester » ; ses spécifications ; puis le bloc « Conception » | ses projets, création ; ses spécifications, construction d'une spécification prête | pas de liste, et la page dit pourquoi ; ses spécifications en lecture seule ; puis le bloc « Conception » | « aucun projet à votre nom » ; ses spécifications en lecture seule |
 | **Un projet** `/projets/<nom>` | tout projet ; sur celui d'un autre : base et email en lecture seule, variables réduites à leurs noms | ses projets | — | — |
 | **Nouvel utilisateur** | oui | refusé | oui | refusé |
 
@@ -42,6 +42,20 @@ Précisions :
   administrateur y voit en plus les ports, la description de vitrine et l'étiquette « hors
   vitrine ». Le superutilisateur peut lancer le test de tous les projets ; un projet sans test
   n'y est jamais compté comme vérifié.
+- **Mes spécifications** (sur Projets, pour tout membre) : les applications que le compte connecté
+  a décrites dans App Builder — nom, nom de projet, type, groupes, compteurs, prête ou ce qui la
+  bloque (les phrases d'App Builder, telles quelles), description et estimations de contexte à la
+  demande. Une spécification prête se construit d'ici : « Lancer la construction » lit son kit
+  dans App Builder, fait contrôler le nom par le moteur, demande la visibilité du dépôt, puis crée
+  le projet avec la feuille de route et le cahier des charges dans son premier commit (même suivi
+  que « Nouveau projet »). Si un projet du compte porte déjà ce nom, un lien vers lui remplace le
+  bouton. C'est le navigateur qui porte le contenu d'App Builder au moteur, avec le jeton de
+  l'utilisateur : ni le backend de `lab-admin` ni le moteur ne lisent App Builder. Le bloc est
+  absent quand le superutilisateur regarde les projets d'un autre (ce seraient toujours les siennes),
+  et se réduit à une phrase si App Builder ne répond pas, refuse, ou n'est pas configuré
+  (`appBuilderApiUrl` dans `assets/env.js`) — le reste de la page n'en dépend pas. Le bloc
+  « Conception » des administrateurs (catalogue de toutes les spécifications, lu en base) est une
+  autre chose et n'a pas changé.
 - **Pourquoi un administrateur qui ne développe pas n'a pas de liste** : la liste vient du moteur,
   qui ne répond qu'aux comptes développeurs. `lab-admin` n'en tient pas une copie.
 - Le **superutilisateur** est celui que le moteur désigne comme tel dans ses réponses ; `lab-admin`
@@ -130,6 +144,16 @@ tous :
 URL ou la console ; le garder dans un service partagé entre pages ; l'afficher sans action de
 l'utilisateur ; afficher sa longueur.
 
+**Le jeton ne part que vers trois adresses.** L'intercepteur ne joint le jeton de l'utilisateur
+qu'aux requêtes qui tombent sous l'API de `lab-admin`, l'API web du moteur, ou l'API de remise
+d'App Builder (`/api/handoff/`, si elle est configurée) : même origine, chemin égal ou prolongé
+par « / » (`core/token-scope.ts`, `tokenBases()` dans `core/env.ts`). Toute autre requête part sans
+jeton. Ajouter un appel vers un autre service demande donc d'ajouter sa base à `tokenBases()`.
+
+**Ce qui vient d'App Builder** est rendu en texte brut, jamais en HTML ; seuls les champs du
+contrat sont repris des réponses ; le contenu d'une graine (feuille de route, cahier des charges)
+n'est ni affiché ni gardé : il va du kit au corps de la création.
+
 Deux autres précautions tenues dans le code : l'adresse de retour après la connexion est la page
 demandée, prise dans l'adresse courante et jamais dans un paramètre (`core/redirect-uri.ts`) ;
 l'adresse d'un éditeur ou d'un pgAdmin rendue par le moteur n'est suivie que si elle est sur
@@ -147,8 +171,12 @@ frontend/src/app/
                           les erreurs, le suivi d'un job. Sans dépendance à Angular.
                           Une forme qui change côté moteur se corrige ici et nulle part ailleurs.
     engine.service.ts     le même, branché sur HttpClient
+    handoff.client.ts     LE client de l'API de remise d'App Builder (mes spécifications, kit) et
+                          le corps de création avec graine. Sans dépendance à Angular.
+    handoff.service.ts    le même, branché sur HttpClient
+    token-scope.ts        à quelles adresses le jeton est joint
     auth.guard.ts         adminGuard et labGuard
-    auth.interceptor.ts   pose le jeton sur chaque requête
+    auth.interceptor.ts   pose le jeton sur les requêtes vers les API du lab utilisées ici, et elles seules
     keycloak.service.ts   connexion, groupes, isAdmin
     redirect-uri.ts       adresse de retour après la connexion
     tool-tab.ts           ouverture d'un outil dans un nouvel onglet
@@ -157,6 +185,7 @@ frontend/src/app/
   pages/
     accueil/  services/  projets/        les pages de tout le monde
     projets/projet.component.*           la page d'un projet
+    projets/mes-specifications.component.*   le bloc « Mes spécifications » de la page Projets
     dashboard/                           le bloc « Conception », inclus dans Projets pour les admins
     nouvel-utilisateur/                  la page d'administration
   shared/
@@ -196,8 +225,10 @@ docker run --rm --env-file lab-admin/.env --network lab-admin-test-net \
 docker stop lab-admin-test-pg && docker network rm lab-admin-test-net
 ```
 
-**Client du moteur** — vingt-deux tests, sous Node, sans navigateur ; ils tiennent la méthode, le
-chemin et le corps de chaque appel, la lecture des erreurs, le suivi d'un job, l'adresse de retour :
+**Clients du moteur et d'App Builder** — quarante et un tests, sous Node, sans navigateur ; ils
+tiennent la méthode, le chemin et le corps de chaque appel, la lecture des erreurs, le suivi d'un
+job, l'adresse de retour, les réponses de l'API de remise telles que le contrat les écrit, le corps
+exact d'une création avec graine, et les adresses auxquelles le jeton est joint :
 
 ```bash
 cd frontend && npm install && npm run test:engine

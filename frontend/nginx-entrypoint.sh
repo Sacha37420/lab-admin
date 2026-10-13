@@ -17,6 +17,7 @@ window.__env = {
   storageUrl:       "https://${DOMAIN}/storage/",
   oauthHubUrl:      "https://${DOMAIN}/oauth-hub/",
   appBuilderUrl:    "https://${DOMAIN}/app-builder",
+  appBuilderApiUrl: "https://${DOMAIN}/app-builder-api",
   codeServerUrl:    "https://${DOMAIN}/code"
 };
 JSEOF
@@ -32,6 +33,7 @@ window.__env = {
   storageUrl:       window.location.protocol + '//' + window.location.hostname + ':4211/',
   oauthHubUrl:      window.location.protocol + '//' + window.location.hostname + ':4215/',
   appBuilderUrl:    window.location.protocol + '//' + window.location.hostname + ':4205',
+  appBuilderApiUrl: window.location.protocol + '//' + window.location.hostname + ':8087',
   codeServerUrl:    ''
 };
 JSEOF

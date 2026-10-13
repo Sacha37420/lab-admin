@@ -260,6 +260,15 @@
     </section>
   }
 
+  <!-- Mes spécifications (App Builder) : pour TOUT membre, toujours celles du compte connecté —
+       donc jamais quand on regarde les projets d'un autre (`?as=`). Le bloc se débrouille seul
+       si App Builder ne répond pas : rien d'autre de la page n'en dépend. -->
+  @if (!loading() && !viewingOther()) {
+    <app-mes-specifications [projects]="projects()" [uid]="self()?.uid ?? null" [canLaunch]="canBuild()"
+                            [githubLinked]="self()?.github_linked ?? null" [githubUrl]="githubUrl()"
+                            (created)="loadProjects()" />
+  }
+
   <!-- Conception (ancienne page /conception) : réservée au groupe `admins`. Après la liste,
        pour que les projets restent ce qu'on voit d'abord. -->
   @if (kc.isAdmin) { <app-dashboard /> }

@@ -239,11 +239,23 @@ export interface ProjectDetail extends Project {
 }
 
 export type ProjectType = 'django' | 'django-angular' | 'angular';
+/**
+ * Graine de création (chantier app-builder-lab, I2) : les lots métier de la
+ * feuille de route et le cahier des charges, écrits par le moteur dans le
+ * premier commit du projet. Deux clés, toutes deux obligatoires ; c'est le
+ * moteur qui valide le contenu.
+ */
+export interface ProjectSeed {
+  lots_md: string;
+  cahier_des_charges_md: string;
+}
 export interface NewProject {
   name: string;
   type: ProjectType;
   visibility: 'private' | 'public';
   required_groups: string[];
+  /** Facultatif (I2). Absent : création strictement comme avant. */
+  seed?: ProjectSeed;
 }
 export interface NameCheck { ok: boolean; reasons: string[]; }
 

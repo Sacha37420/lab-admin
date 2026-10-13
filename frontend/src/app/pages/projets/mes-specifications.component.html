@@ -1,0 +1,175 @@
+<section class="pj-card pj-specs" aria-labelledby="sp-title">
+  <div class="pj-row pj-specs-head">
+    <h2 id="sp-title">Mes spécifications</h2>
+    <div class="pj-row pj-toolbar-actions">
+      @if (!loading() && error()?.code !== 'not_configured') {
+        <button type="button" class="btn-secondary" (click)="load()" [disabled]="busy">Actualiser</button>
+      }
+    </div>
+  </div>
+  <p class="pj-hint">
+    Les applications que vous avez décrites dans App Builder. Une spécification prête se construit d'ici :
+    le lab crée le projet avec sa feuille de route et son cahier des charges, il ne reste qu'à le développer lot par lot.
+  </p>
+
+  @if (loading()) {
+    <p class="pj-hint" role="status">Lecture de vos spécifications…</p>
+  } @else if (error(); as e) {
+    <!-- App Builder injoignable, refus, adresse absente : un message, le reste de la page ne dépend pas de ce bloc. -->
+    <p class="pj-hint" role="status" id="sp-unavailable">{{ e.detail }}</p>
+  } @else if (specs().length === 0) {
+    <p class="pj-hint" id="sp-empty">Vous n'avez encore aucune spécification dans App Builder.</p>
+    @if (appBuilderUrl; as u) {
+      <div><a class="btn-secondary" [href]="u" target="_blank" rel="noopener">Ouvrir App Builder ↗</a></div>
+    }
+  } @else {
+    @if (!canLaunch) {
+      <p class="pj-hint">Lancer une construction demande un compte développeur dont l'espace est prêt : ici, vos spécifications sont en lecture seule.</p>
+    }
+    <ul class="pj-list pj-specs-list">
+      @for (s of specs(); track s.id) {
+        <li [attr.data-spec]="s.id">
+          <div class="pj-item-main">
+            <span class="pj-item-name">{{ s.name || 'Spécification sans nom' }}</span>
+            <span class="pj-meta">
+              @if (s.ready) {
+                <span class="pj-badge pj-ok">prête</span>
+              } @else {
+                <span class="pj-badge pj-warn">à compléter</span>
+              }
+              @if (s.project_name) {
+                <span>projet <code>{{ s.project_name }}</code></span>
+              } @else {
+                <span>nom de projet non saisi</span>
+              }
+              <span>{{ typeLabel(s.app_type) }}</span>
+              <span>groupes : {{ s.required_groups.length ? s.required_groups.join(', ') : 'aucun' }}</span>
+              @if (s.updated_at) { <span>modifiée le {{ s.updated_at | date: dateFormat }}</span> }
+            </span>
+            <span class="pj-meta">
+              <span>{{ s.counts.data_models }} modèle(s)</span>
+              <span>{{ s.counts.endpoints }} point(s) d'API</span>
+              <span>{{ s.counts.pages }} page(s)</span>
+              <span>{{ s.counts.lots }} lot(s) de développement</span>
+            </span>
+            @if (!s.ready) {
+              <ul class="pj-reasons pj-specs-blockers" [attr.aria-label]="'Ce qui bloque ' + s.name">
+                @for (b of s.blockers; track $index) { <li>{{ b.message }}</li> }
+                @if (s.blockers.length === 0) { <li>App Builder ne la déclare pas prête.</li> }
+              </ul>
+            }
+          </div>
+
+          <div class="pj-row pj-actions">
+            <button type="button" class="btn-secondary" (click)="toggleDetail(s)" [attr.aria-expanded]="detailId() === s.id"
+                    [attr.aria-label]="(detailId() === s.id ? 'Masquer le détail de ' : 'Détail de ') + s.name">
+              {{ detailId() === s.id ? 'Masquer' : 'Détail' }}
+            </button>
+            @if (appBuilderUrl; as u) {
+              <a class="btn-secondary" [href]="u" target="_blank" rel="noopener"
+                 [attr.aria-label]="'Ouvrir ' + s.name + ' dans App Builder'">Ouvrir dans App Builder ↗</a>
+            }
+            @if (project(s); as p) {
+              <!-- Un projet de ce compte porte déjà ce nom : on y va, on ne le recrée pas. -->
+              <a class="btn-primary" [routerLink]="['/projets', p.name]" [attr.aria-label]="'Ouvrir le projet ' + p.name">Projet {{ p.name }}</a>
+            } @else if (s.ready && canLaunch && launchId() !== s.id) {
+              <button type="button" class="btn-primary" (click)="launch(s)" [disabled]="busy"
+                      [attr.aria-label]="'Lancer la construction de ' + s.name">Lancer la construction</button>
+            }
+          </div>
+
+          <!-- ── Détail : description, estimations de contexte ─────────────── -->
+          @if (detailId() === s.id) {
+            <div class="pj-specs-panel">
+              @if (detailError(); as e) {
+                <p class="pj-hint" role="status">{{ e.detail }}</p>
+              } @else if (detail(); as d) {
+                <p class="pj-specs-text">{{ d.description || 'Aucune description.' }}</p>
+                <p class="pj-hint">
+                  Ce qu'un assistant de développement devra tenir en tête (estimations) :<br>
+                  {{ context(d.context).cahier }}<br>
+                  <span [class.pj-error]="context(d.context).over">{{ context(d.context).lot }}</span>
+                </p>
+              } @else {
+                <p class="pj-hint" role="status">Lecture…</p>
+              }
+            </div>
+          }
+
+          <!-- ── Lancer la construction ────────────────────────────────────── -->
+          @if (launchId() === s.id) {
+            <div class="pj-specs-panel" aria-live="polite">
+              <h3>Construire « {{ s.name }} »</h3>
+              @if (preparing()) {
+                <p class="pj-hint" role="status">Lecture de la spécification et vérification du nom…</p>
+              } @else if (planError(); as e) {
+                <p class="pj-error" role="alert">{{ e.detail }}</p>
+                @if (e.blockers.length) {
+                  <ul class="pj-reasons">@for (b of e.blockers; track $index) { <li>{{ b.message }}</li> }</ul>
+                }
+              } @else if (plan(); as pl) {
+                <dl class="pj-dl">
+                  <dt>Projet</dt><dd><code>{{ pl.kit.create.name }}</code></dd>
+                  <dt>Type</dt><dd>{{ typeLabel(pl.kit.create.type) }}</dd>
+                  <dt>Groupes autorisés</dt><dd>{{ pl.kit.create.required_groups.join(', ') }}</dd>
+                  <dt>Contexte</dt>
+                  <dd>
+                    {{ context(pl.kit.context).cahier }}<br>
+                    <span [class.pj-error]="context(pl.kit.context).over">{{ context(pl.kit.context).lot }}</span>
+                  </dd>
+                </dl>
+
+                @if (!allows(pl)) {
+                  <!-- Nom refusé par le moteur : pas de création possible d'ici. -->
+                  <p class="pj-error" role="alert">Le lab refuse le nom <code>{{ pl.kit.create.name }}</code> : changez-le dans App Builder, puis relancez.</p>
+                  <ul class="pj-reasons">@for (r of pl.name.reasons; track $index) { <li>{{ r }}</li> }</ul>
+                } @else if (githubLinked === false) {
+                  <p class="pj-error">Reliez d'abord votre compte GitHub : le dépôt du projet est créé sous votre compte.</p>
+                  @if (githubUrl) {
+                    <div><a class="btn-secondary" [href]="githubUrl" target="_blank" rel="noopener">Relier mon compte GitHub ↗</a></div>
+                  }
+                } @else {
+                  <p class="pj-success">✓ Nom disponible — il servira d'adresse (<code>/{{ pl.kit.create.name }}</code>), de dépôt et de schéma.</p>
+                  <p class="pj-hint">
+                    Le projet naît avec <code>FEUILLE_DE_ROUTE.md</code> (les lots de cette spécification, après le lot 1 du lab)
+                    et <code>CAHIER_DES_CHARGES.md</code>. Il reflète la spécification telle qu'elle est maintenant :
+                    la modifier ensuite dans App Builder ne change pas le projet.
+                  </p>
+                  <label class="pj-fld">
+                    <span>Dépôt GitHub</span>
+                    <select name="visibility" [(ngModel)]="visibility" [disabled]="sending() || !!jobId()">
+                      <option value="private">Privé</option>
+                      <option value="public">Public</option>
+                    </select>
+                  </label>
+
+                  @if (createError(); as e) {
+                    <p class="pj-error" role="alert">{{ e.detail }}</p>
+                    @if (e.reasons.length) { <ul class="pj-reasons">@for (r of e.reasons; track $index) { <li>{{ r }}</li> }</ul> }
+                    @if (e.connectUrl) { <div><a [href]="e.connectUrl" target="_blank" rel="noopener" class="btn-secondary">Relier mon compte GitHub ↗</a></div> }
+                  }
+
+                  @if (jobId()) {
+                    <app-job-suivi [jobId]="jobId()" (fini)="onJobDone($event)" />
+                    @if (createdApp()) {
+                      <div><a class="btn-primary" [routerLink]="['/projets', createdApp()]">Ouvrir {{ createdApp() }}</a></div>
+                    }
+                  } @else {
+                    <div>
+                      <button type="button" class="btn-primary" (click)="confirm()" [disabled]="sending()">
+                        {{ sending() ? 'Envoi…' : 'Créer le projet' }}
+                      </button>
+                    </div>
+                  }
+                }
+              }
+              @if (!busy) {
+                <div><button type="button" class="btn-secondary" (click)="closeLaunch()">Fermer</button></div>
+              }
+            </div>
+          }
+        </li>
+      }
+    </ul>
+  }
+</section>

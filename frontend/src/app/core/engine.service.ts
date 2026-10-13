@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { EngineClient, EngineRequest } from './engine.client';
-import { labEnv } from './env';
+import { engineUrl, labEnv } from './env';
 
 /**
  * Moteur du lab vu d'Angular : `EngineClient` (toutes les routes, tous les
@@ -13,8 +13,7 @@ import { labEnv } from './env';
 export class EngineService extends EngineClient {
   constructor() {
     const http = inject(HttpClient);
-    const base = (labEnv().engineUrl
-      ?? `${window.location.origin}/mcp/api`).replace(/\/+$/, '');
+    const base = engineUrl();
     super((req: EngineRequest) =>
       http.request<unknown>(req.method, `${base}${req.path}`, { body: req.body, params: req.params }));
   }

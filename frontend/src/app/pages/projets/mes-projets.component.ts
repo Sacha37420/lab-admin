@@ -16,6 +16,7 @@ import { JobSuiviComponent } from '../../shared/job-suivi/job-suivi.component';
 import { beginOpening } from '../../core/tool-tab';
 import { DATE_FORMAT, shortSha } from '../../core/format';
 import { DashboardComponent } from '../dashboard/dashboard.component';
+import { MesSpecificationsComponent } from './mes-specifications.component';
 
 /**
  * Page « Projets » (`/projets`, contrat multi-dev I6 v8) : une ligne par projet
@@ -30,11 +31,14 @@ import { DashboardComponent } from '../dashboard/dashboard.component';
  *
  * v10 : la liste est en deux sections d'après `kind`, et la page porte en bas,
  * POUR LES ADMINS SEULEMENT, le bloc de conception de l'ancienne `/conception`.
+ *
+ * Chantier app-builder-lab : entre les deux, POUR TOUT MEMBRE, le bloc « Mes
+ * spécifications » (`mes-specifications.component.ts`) — absent en `?as=`.
  */
 @Component({
   selector: 'app-mes-projets',
   standalone: true,
-  imports: [FormsModule, RouterLink, DatePipe, JobSuiviComponent, DashboardComponent],
+  imports: [FormsModule, RouterLink, DatePipe, JobSuiviComponent, DashboardComponent, MesSpecificationsComponent],
   templateUrl: './mes-projets.component.html',
 })
 export class MesProjetsComponent implements OnInit {
@@ -69,6 +73,16 @@ export class MesProjetsComponent implements OnInit {
   viewingOther = computed(() => !!this.shown()?.viewed_as && this.shown()?.viewed_as !== this.self()?.uid);
   /** Le superutilisateur sans `?as=` voit les projets de tout le lab. */
   showOwner = computed(() => !!this.self()?.is_superuser && !this.viewingOther());
+
+  /**
+   * Le compte connecté peut-il créer un projet — donc lancer la construction
+   * d'une spécification ? Développeur (ou superutilisateur) dont l'espace est
+   * prêt. Les autres voient leurs spécifications en lecture seule.
+   */
+  canBuild = computed(() => {
+    const p = this.profile();
+    return (p === 'dev' || p === 'superuser') && !!this.self()?.initialized && !this.viewingOther();
+  });
 
   // ── Nouveau projet ─────────────────────────────────────────────────────────
   formOpen = signal(false);
