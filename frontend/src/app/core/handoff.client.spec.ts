@@ -16,7 +16,7 @@ import { Observable, firstValueFrom, of, throwError } from 'rxjs';
 import { EngineClient, EngineRequest, Project } from './engine.client';
 import {
   HandoffClient, HandoffError, NOT_CONFIGURED, appTypeLabel, contextSummary, existingProject, formatCount,
-  launchPlan, planAllowsCreation, seededProject, toHandoffError,
+  launchPlan, planAllowsCreation, seededProject, toHandoffError, toListError,
 } from './handoff.client';
 
 // ── Réponses du contrat (I1) ─────────────────────────────────────────────────
@@ -125,6 +125,9 @@ test('I1 erreurs : 401, 403, 404, réseau coupé, proxy, adresse non configurée
   for (const status of [0, 502, 503, 504]) assert.equal((await fail(status, null)).code, 'unreachable', String(status));
   assert.equal((await fail(405)).code, 'unexpected');
   assert.equal((await fail(500, '<html>')).code, 'unexpected');
+  // Liste : un 404 veut dire « API de remise pas servie », pas « spécification disparue ».
+  assert.equal(toListError({ status: 404, error: null }).code, 'unreachable');
+  assert.equal(toListError({ status: 403, error: null }).code, 'forbidden');
   // Sans `appBuilderApiUrl`, le service lève cette marque : aucun appel ne part.
   assert.equal((await failure(recorder(() => throwError(() => NOT_CONFIGURED)).client.specs())).code, 'not_configured');
   // Chaque erreur porte une phrase affichable, en français.

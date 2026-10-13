@@ -8,7 +8,7 @@ import { HandoffService } from '../../core/handoff.service';
 import { EngineError, Job, Project, toEngineError } from '../../core/engine.client';
 import {
   HandoffContext, HandoffError, HandoffSpec, HandoffSpecDetail, LaunchPlan,
-  appTypeLabel, contextSummary, existingProject, launchPlan, planAllowsCreation, seededProject, toHandoffError,
+  appTypeLabel, contextSummary, existingProject, launchPlan, planAllowsCreation, seededProject, toHandoffError, toListError,
 } from '../../core/handoff.client';
 import { JobSuiviComponent } from '../../shared/job-suivi/job-suivi.component';
 import { DATE_FORMAT } from '../../core/format';
@@ -67,7 +67,7 @@ export class MesSpecificationsComponent implements OnInit {
     this.error.set(null);
     this.handoff.specs().subscribe({
       next: specs => { this.specs.set(specs); this.loading.set(false); },
-      error: err => { this.specs.set([]); this.error.set(toHandoffError(err)); this.loading.set(false); },
+      error: err => { this.specs.set([]); this.error.set(toListError(err)); this.loading.set(false); },
     });
   }
 

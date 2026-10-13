@@ -96,6 +96,16 @@ export const NOT_CONFIGURED = { handoff: 'not_configured' } as const;
 /** Marque posée par ce client quand une réponse 200 n'a pas la forme du contrat. */
 const BAD_SHAPE = { handoff: 'bad_shape' } as const;
 
+/**
+ * Erreur de lecture de la LISTE. Un 404 n'y désigne aucune spécification : c'est
+ * qu'App Builder ne sert pas (encore) l'API de remise — même phrase que s'il ne
+ * répondait pas.
+ */
+export function toListError(err: unknown): HandoffError {
+  const e = toHandoffError(err);
+  return e.code === 'not_found' ? { ...e, code: 'unreachable', detail: ERROR_TEXT.unreachable } : e;
+}
+
 /** Normalise ce que le transport a levé (forme `HttpErrorResponse` : `{status, error}`). */
 export function toHandoffError(err: unknown): HandoffError {
   const e = (err ?? {}) as { status?: unknown; error?: unknown; handoff?: unknown };
