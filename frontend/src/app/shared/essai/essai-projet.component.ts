@@ -38,6 +38,7 @@ import { JobSuiviComponent } from '../job-suivi/job-suivi.component';
 
       @if (unavailable(); as why) {
         <p class="pj-hint" role="status">{{ unavailableText[why] }}</p>
+        <div><button type="button" class="btn-secondary" (click)="load()" [disabled]="loading()">Réessayer</button></div>
       } @else if (loading() && !preview()) {
         <p class="pj-hint" role="status">Lecture de l'état de l'essai…</p>
       } @else {

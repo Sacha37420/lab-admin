@@ -508,8 +508,9 @@ export function previewServiceTone(state: string): 'ok' | 'warn' | 'ko' {
 
 /**
  * Pourquoi le bloc n'a rien à proposer, quand ce n'est pas une panne :
- *  - `no_domain` : `503 unavailable`, le lab n'a pas de nom de domaine (pas
- *    d'essai en HTTP local) ;
+ *  - `no_domain` : `503 unavailable` — le lab n'a pas de nom de domaine (pas
+ *    d'essai en HTTP local) ou, depuis le contrat v2, le script d'essai n'y
+ *    est pas installé : dans les deux cas, pas d'essai sur ce lab ;
  *  - `not_served` : `404` sur une route d'essai d'un projet QUI EXISTE (sa page
  *    est chargée) — le moteur en service ne connaît pas encore ces routes, que
  *    le 404 vienne de lui (`not_found`) ou du proxy (`no_engine`).
@@ -522,12 +523,18 @@ export function previewUnavailable(e: EngineError): 'no_domain' | 'not_served' |
 }
 
 export const PREVIEW_UNAVAILABLE_TEXT: Record<'no_domain' | 'not_served', string> = {
-  no_domain: "Pas d'adresse d'essai sur ce lab : il n'a pas de nom de domaine.",
+  no_domain: "Pas d'adresse d'essai sur ce lab pour l'instant (lab sans nom de domaine, ou fonction pas encore installée).",
   not_served: "L'adresse d'essai n'est pas encore disponible sur ce lab.",
 };
 
-/** Phrase d'un refus de construire ou d'arrêter. `no_workspace` : on dit quoi faire. */
+/**
+ * Phrase d'un refus de construire ou d'arrêter. `no_workspace` : on dit quoi
+ * faire ; `busy` (v2, `423` sur l'arrêt) : le lab est occupé, on réessaie.
+ */
 export function previewErrorText(e: EngineError): string {
+  if (e.code === 'busy') {
+    return "Le lab est occupé (un déploiement est en cours, ou un essai est en construction) : rien n'a été arrêté. Réessayez dans un instant.";
+  }
   if (e.code === 'no_workspace') {
     return "Ce projet n'a pas encore de dossier de travail : ouvrez d'abord son espace (« Ouvrir dans VS Code », plus haut), puis construisez l'essai.";
   }

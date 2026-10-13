@@ -564,3 +564,49 @@ test("essai I2 : une adresse n'est un lien que en https et sur l'origine du lab"
   // Lab servi en http (local) : aucune adresse d'essai n'y devient un lien.
   assert.equal(isPreviewUrl('http://localhost:4201/dev-hassan/', 'http://localhost:4201'), false);
 });
+
+// ── Précisions du contrat v2 (I2) ────────────────────────────────────────────
+
+test('essai I2 v2 : `423 busy` sur l\'arrêt — « le lab est occupé », pas une indisponibilité', () => {
+  const busy = toEngineError({ status: 423, error: { error: 'busy', detail: 'Un déploiement est en cours.' } });
+  assert.equal(busy.code, 'busy');
+  assert.equal(previewUnavailable(busy), null);                 // le bloc garde ses boutons
+  assert.match(previewErrorText(busy), /Le lab est occupé/);
+  assert.match(previewErrorText(toEngineError({ status: 423, error: { error: 'busy' } })), /Le lab est occupé/);
+});
+
+test('essai I2 v2 : un `step` inconnu (`lock`, `interne`, futur) est un échec ordinaire avec `error`', async () => {
+  for (const step of ['lock', 'interne', 'etape-future']) {
+    const ko = job({ kind: 'preview', state: 'failed', terminal: true, step,
+                     result: { ok: false, step, error: 'le verrou de déploiement est occupé', reasons: [] } });
+    const { client, calls } = recorder(() => of(ko));
+    const last = await lastValueFrom(client.watchJob('a1b2c3d4e5f60718', 1));
+    assert.equal(calls.length, 1);                              // terminal : le suivi s'arrête
+    assert.deepEqual([last.state, last.result?.ok, last.result?.step, last.result?.error],
+      ['failed', false, step, 'le verrou de déploiement est occupé']);
+    assert.equal(last.result?.preview, undefined);
+  }
+});
+
+test('essai I2 v2 : `expires_at: null` sur un essai `running`', () => {
+  const p = toPreview({ ...ESSAI, expires_at: null });
+  assert.equal(p.expires_at, null);                             // affiché « — », jamais « Invalid Date »
+  assert.equal(p.state, 'running');
+  assert.equal(previewShowsThis(p), true);                      // reste l'essai de ce projet, arrêtable
+  assert.equal(p.built_at, ESSAI.built_at);
+  // Date de construction illisible : les deux dates tombent, le reste tient.
+  const q = toPreview({ ...ESSAI, built_at: 'illisible', expires_at: null });
+  assert.deepEqual([q.built_at, q.expires_at, q.url], [null, null, ESSAI.url]);
+});
+
+test('essai I2 v2 : `500 failed` et `503 unavailable` sur la lecture', () => {
+  const failed = toEngineError({ status: 500, error: { error: 'failed', detail: "La sortie du script d'essai est inexploitable." } });
+  assert.equal(failed.code, 'failed');
+  assert.equal(previewUnavailable(failed), null);               // une vraie erreur : affichée, avec son detail
+  assert.equal(failed.detail, "La sortie du script d'essai est inexploitable.");
+  assert.ok(toEngineError({ status: 500, error: { error: 'failed' } }).detail.length > 0);
+  // Script absent : même traitement que le lab sans domaine — pas d'essai ici, phrase discrète.
+  const absent = toEngineError({ status: 503, error: { error: 'unavailable', detail: 'app-preview.sh est absent.' } });
+  assert.equal(previewUnavailable(absent), 'no_domain');
+  assert.doesNotMatch(PREVIEW_UNAVAILABLE_TEXT.no_domain, /^Pas d'adresse d'essai sur ce lab : il n'a pas de nom de domaine\.$/);
+});
