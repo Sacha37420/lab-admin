@@ -154,15 +154,19 @@ class LabUserCreateView(APIView):
         else:
             email_error = 'SMTP non configuré dans lab-admin/.env.'
 
-        return Response({
+        body = {
             'username': username,
             'email': email,
             'groups': added_groups,
             'failed_groups': failed_groups,
             'base_url': base_url,
-            # Filet de sécurité si l'email échoue : le mot de passe reste
-            # visible une fois côté admin, jamais ré-affichable ensuite.
-            'password': password,
             'email_sent': email_sent,
             'email_error': email_error,
-        }, status=status.HTTP_201_CREATED)
+        }
+        # Filet de sécurité si l'email n'est pas parti, et SEULEMENT dans ce cas :
+        # le mot de passe est rendu une fois à l'admin, jamais ré-affichable
+        # ensuite. Email parti ⇒ la clé est absente de la réponse (le titulaire
+        # l'a reçu ; l'admin n'a pas à le voir transiter).
+        if not email_sent:
+            body['password'] = password
+        return Response(body, status=status.HTTP_201_CREATED)

@@ -13,7 +13,8 @@ interface CreateUserResult {
   groups: string[];
   failed_groups: string[];
   base_url: string;
-  password: string;
+  /** Présent SEULEMENT si l'email n'est pas parti (le backend l'omet sinon). */
+  password?: string;
   email_sent: boolean;
   email_error: string | null;
 }

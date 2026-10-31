@@ -264,3 +264,63 @@ class AppLocationTests(TestCase):
         by = {g['name']: g['required_by'] for g in data['groups']}
         self.assertEqual(by['developers'], ['demenagee', 'nouvelle'])
         self.assertEqual(by['famille'], ['ancienne'])
+
+
+# ── Création d'utilisateur : le mot de passe ne revient que si l'email n'est pas parti ──
+
+@override_settings(EMAIL_HOST='smtp.exemple.org', DEFAULT_FROM_EMAIL='lab@exemple.org',
+                   EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class UserCreationPasswordTests(TestCase):
+    """Lot 2 : email parti ⇒ aucune clé `password` dans la réponse ; sinon elle y est,
+    et c'est bien le mot de passe posé dans Keycloak."""
+
+    BODY = {'username': 'nouveau', 'first_name': 'N', 'last_name': 'U',
+            'email': 'nouveau@exemple.org', 'groups': ['famille']}
+
+    def setUp(self) -> None:
+        p = mock.patch('api.views.keycloak_admin')
+        self.kc = p.start()
+        self.addCleanup(p.stop)
+        self.kc.find_user_by_username.return_value = None
+        self.kc.find_user_by_email.return_value = None
+        self.kc.all_groups.return_value = [{'id': 'g1', 'name': 'famille'}]
+        self.kc.create_user.return_value = 'uid-1'
+        self.admin = client_for('sacha', ADMINS)
+
+    def _set_password(self) -> str:
+        (_, pwd), kwargs = self.kc.set_password.call_args
+        self.assertEqual(kwargs, {'temporary': False})
+        return pwd
+
+    def test_email_sent_means_no_password_in_response(self):
+        from django.core import mail
+        resp = self.admin.post('/api/lab-users/', self.BODY, format='json')
+        self.assertEqual(resp.status_code, 201)
+        data = resp.json()
+        self.assertTrue(data['email_sent'])
+        self.assertIsNone(data['email_error'])
+        self.assertNotIn('password', data)
+        # Le mot de passe est parti par email, et nulle part ailleurs dans la réponse.
+        pwd = self._set_password()
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn(pwd, mail.outbox[0].body)
+        self.assertNotIn(pwd, resp.content.decode())
+
+    def test_email_failure_returns_the_password(self):
+        with mock.patch('api.views.send_mail', side_effect=OSError('connexion refusée')):
+            resp = self.admin.post('/api/lab-users/', self.BODY, format='json')
+        self.assertEqual(resp.status_code, 201)
+        data = resp.json()
+        self.assertFalse(data['email_sent'])
+        self.assertIn('connexion refusée', data['email_error'])
+        self.assertEqual(data['password'], self._set_password())
+
+    @override_settings(EMAIL_HOST='')
+    def test_smtp_not_configured_returns_the_password(self):
+        from django.core import mail
+        resp = self.admin.post('/api/lab-users/', self.BODY, format='json')
+        self.assertEqual(resp.status_code, 201)
+        data = resp.json()
+        self.assertFalse(data['email_sent'])
+        self.assertEqual(data['password'], self._set_password())
+        self.assertEqual(len(mail.outbox), 0)
