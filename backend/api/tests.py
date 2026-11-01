@@ -206,15 +206,13 @@ class AdminToolsTunnelTests(TestCase):
 
     @override_settings(SERVER_URL_LAN='http://192.168.1.20', KEYCLOAK_PUBLIC_URL='https://lab.example/kc',
                        KEYCLOAK_REALM='ssolab')
-    def test_admin_gets_keycloak_and_the_tunnel_not_the_dead_links(self):
+    def test_admin_gets_the_tunnel_not_the_dead_links(self):
         resp = client_for('sacha', ADMINS).get('/api/tools/')
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
-        self.assertEqual([t['name'] for t in body['tools']], ['Keycloak'])
-        self.assertEqual(body['tools'][0]['url'], 'https://lab.example/kc/admin/ssolab/console/')
-        for tool in body['tools']:
-            self.assertNotIn(':5050', tool['url'])
-            self.assertNotIn(':8081', tool['url'])
+        # Keycloak 26 : Caddy ne sert plus la console d'administration — aucune carte vers elle.
+        self.assertEqual(body['tools'], [])
+        self.assertNotIn('/console/', resp.content.decode())
         self.assertNotIn('192.168.1.20:5050', resp.content.decode())
         self.assertNotIn('192.168.1.20:8081', resp.content.decode())
         self.assertEqual(body['tunnel']['command'],

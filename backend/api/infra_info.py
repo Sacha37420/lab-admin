@@ -1,8 +1,8 @@
 """Liens vers les outils d'administration du lab (page Services, admins).
 
 Calculés à partir de variables déjà présentes dans le ``.env`` de cette app
-(``KEYCLOAK_PUBLIC_URL``, ``SERVER_URL_LAN`` — ce dernier seulement pour nommer
-le serveur dans la commande de tunnel SSH) — jamais de dump d'un fichier ``.env``.
+(``SERVER_URL_LAN``, seulement pour nommer le serveur dans la commande de
+tunnel SSH) — jamais de dump d'un fichier ``.env``.
 La liste des apps du lab, elle, vient du moteur (page Projets) : ce module ne
 lit plus ``.ports``.
 """
@@ -16,23 +16,13 @@ from django.conf import settings
 def admin_tools() -> list[dict]:
     """Liens vers les outils d'administration du lab (jamais de contenu .env brut).
 
-    Keycloak passe par Caddy (routage par chemin, cf. KEYCLOAK_PUBLIC_URL) donc
-    reste joignable en WAN comme en LAN. pgAdmin et phpLDAPadmin, eux, ne sont
-    pas routés par Caddy et n'ont aucune barrière Keycloak devant eux : leurs
-    ports (5050, 8081) sont liés à la boucle locale de l'hôte (chantier failles,
-    F10). Ils n'ont donc plus de carte « Ouvrir » — on y entre par tunnel SSH,
-    voir ``admin_tunnel()``.
+    Vide depuis Keycloak 26 (2026-11-01) : Caddy ne sert plus ni la console
+    d'administration ni le realm ``master``, et la console ouverte par tunnel envoie
+    la connexion vers l'adresse publique (``authServerUrl``), refusée elle aussi.
+    pgAdmin et phpLDAPadmin, liés à la boucle locale de l'hôte, s'ouvrent par tunnel
+    SSH : voir ``admin_tunnel()``.
     """
-    kc_url = getattr(settings, 'KEYCLOAK_PUBLIC_URL', '') or 'http://localhost:8080'
-    kc_realm = getattr(settings, 'KEYCLOAK_REALM', '') or 'ssolab'
-
-    return [
-        {
-            'name': 'Keycloak',
-            'url': f"{kc_url.rstrip('/')}/admin/{kc_realm}/console/",
-            'description': 'Console admin — utilisateurs, groupes, clients, rôles.',
-        },
-    ]
+    return []
 
 
 def _server_host() -> str:
