@@ -108,7 +108,7 @@
     }
 
     <!-- ── Administration : l'ancienne page « Outils », entrée pour entrée ── -->
-    @if (kc.isAdmin && (tools().length || codeUrl)) {
+    @if (kc.isAdmin && (tools().length || codeUrl || tunnel())) {
       <div class="env-card">
         <div class="env-card-header">
           <h2>Interfaces d'administration</h2>
@@ -127,6 +127,13 @@
               <div class="svc-name">Éditeur du lab</div>
               <div class="svc-desc">Le code du lab lui-même, pas celui d'un projet. Réservé aux membres du groupe admins.</div>
               <div class="svc-url"><a class="svc-link" [href]="codeUrl" target="_blank" rel="noopener">Ouvrir ↗</a></div>
+            </div>
+          }
+          @if (tunnel(); as t) {
+            <div class="service-card">
+              <div class="svc-name">pgAdmin et phpLDAPadmin</div>
+              <div class="svc-desc">{{ t.text }}</div>
+              <div class="svc-url svc-command">{{ t.command }}</div>
             </div>
           }
         </div>

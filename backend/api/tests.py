@@ -198,6 +198,43 @@ class RealTokenGateTests(TestCase):
         self.assertEqual(self.get('/api/tools/', forged).status_code, 403)
 
 
+# ── F10 (chantier failles) : pgAdmin et phpLDAPadmin par tunnel SSH ──────────
+
+class AdminToolsTunnelTests(TestCase):
+    """5050 et 8081 sont liés à 127.0.0.1 : plus de carte « Ouvrir » vers l'IP LAN,
+    une indication de tunnel SSH, servie aux seuls `admins`."""
+
+    @override_settings(SERVER_URL_LAN='http://192.168.1.20', KEYCLOAK_PUBLIC_URL='https://lab.example/kc',
+                       KEYCLOAK_REALM='ssolab')
+    def test_admin_gets_keycloak_and_the_tunnel_not_the_dead_links(self):
+        resp = client_for('sacha', ADMINS).get('/api/tools/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual([t['name'] for t in body['tools']], ['Keycloak'])
+        self.assertEqual(body['tools'][0]['url'], 'https://lab.example/kc/admin/ssolab/console/')
+        for tool in body['tools']:
+            self.assertNotIn(':5050', tool['url'])
+            self.assertNotIn(':8081', tool['url'])
+        self.assertNotIn('192.168.1.20:5050', resp.content.decode())
+        self.assertNotIn('192.168.1.20:8081', resp.content.decode())
+        self.assertEqual(body['tunnel']['command'],
+                         'ssh -L 5050:127.0.0.1:5050 -L 8081:127.0.0.1:8081 <utilisateur>@192.168.1.20')
+        self.assertEqual(body['tunnel']['urls'],
+                         {'pgAdmin': 'http://localhost:5050', 'phpLDAPadmin': 'http://localhost:8081'})
+
+    def test_server_placeholder_when_lan_url_is_unknown(self):
+        for lan in ('', 'http://localhost', 'http://CHANGE_ME'):
+            with self.subTest(lan=lan), override_settings(SERVER_URL_LAN=lan):
+                cmd = client_for('sacha', ADMINS).get('/api/tools/').json()['tunnel']['command']
+                self.assertTrue(cmd.endswith(' <utilisateur>@<serveur>'), cmd)
+
+    def test_developer_without_admins_does_not_see_the_tunnel(self):
+        resp = client_for('hassan', DEVELOPERS).get('/api/tools/')
+        self.assertEqual(resp.status_code, 403)
+        self.assertNotIn('tunnel', resp.content.decode())
+        self.assertNotIn('5050', resp.content.decode())
+
+
 # ── Dossier `deploiement/` : une app y vit, ou à la racine (contrat v5) ────────
 
 _COMPOSE = '''services:

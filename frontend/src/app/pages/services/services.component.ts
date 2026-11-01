@@ -9,6 +9,8 @@ import { MaBaseComponent } from '../../shared/ma-base/ma-base.component';
 import { EmailProfilsComponent } from '../../shared/email/email-profils.component';
 
 interface Tool { name: string; url: string; description: string }
+/** pgAdmin et phpLDAPadmin : liés à la boucle locale de l'hôte, on y entre par tunnel SSH. */
+interface Tunnel { command: string; text: string; urls: Record<string, string> }
 
 /**
  * Services du lab (contrat multi-dev I6 v10) : UNE page, qui a absorbé l'ancienne
@@ -19,7 +21,8 @@ interface Tool { name: string; url: string; description: string }
  * - tout le monde (admins et developers) : Mon compte, Storage, OAuth Hub ;
  * - développeur initialisé : Ma base + pgAdmin personnel, Email, MCP ;
  * - admins : toutes les entrées de l'ancienne page Outils, telles que
- *   `GET /api/tools/` les rend (appelé pour eux SEULEMENT), plus l'éditeur du lab.
+ *   `GET /api/tools/` les rend (appelé pour eux SEULEMENT), plus l'éditeur du lab ;
+ *   pgAdmin et phpLDAPadmin n'ont plus de carte : indication de tunnel SSH (même réponse).
  */
 @Component({
   selector: 'app-services',
@@ -35,6 +38,7 @@ export class ServicesComponent implements OnInit {
   me = signal<Me | null>(null);
   profile = signal<Profile | null>(null);
   tools = signal<Tool[]>([]);
+  tunnel = signal<Tunnel | null>(null);
   copied = signal(false);
 
   isDev = computed(() => (this.profile() === 'dev' || this.profile() === 'superuser') && !!this.me()?.initialized);
@@ -54,9 +58,9 @@ export class ServicesComponent implements OnInit {
       error: () => this.me.set(null),
     });
     if (this.kc.isAdmin) {
-      this.http.get<{ tools: Tool[] }>(`${apiUrl()}/api/tools/`).subscribe({
-        next: r => this.tools.set(r.tools ?? []),
-        error: () => this.tools.set([]),
+      this.http.get<{ tools: Tool[]; tunnel?: Tunnel }>(`${apiUrl()}/api/tools/`).subscribe({
+        next: r => { this.tools.set(r.tools ?? []); this.tunnel.set(r.tunnel ?? null); },
+        error: () => { this.tools.set([]); this.tunnel.set(null); },
       });
     }
   }

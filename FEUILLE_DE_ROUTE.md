@@ -42,17 +42,17 @@ commande est en tête de `backend/api/tests.py`, ou passer par `bash chantiers/t
 - [x] `ss -tlnp | grep -E ':(8083|4201)'` ne montre que `127.0.0.1` ; page OK dans `lab-runner` (vérifié le 2026-10-31 après déploiement : 127.0.0.1 seulement, cloisonnement 3/3)
 **Vérifié le :** 2026-10-31 — `bash chantiers/tests/essai.sh lab-admin` : 17 tests OK (14 + 3 nouveaux) ; avec l'ancienne `views.py`, `test_email_sent_means_no_password_in_response` échoue (cas négatif) ; `npm run test:engine` 51/51 ; `ng build` OK ; `docker compose config` rend `host_ip: 127.0.0.1` sur les deux ports. Non déployé : `ss` et `lab-runner` restent à faire. **Mis en service le 2026-10-31** (chantier « urgences ») : image construite pendant que l'ancienne tournait, `scripts/app-test.sh` vert sur cette image, puis `up -d --no-build` ; test de cloisonnement par `lab-runner` vert après déploiement.
 
-## Lot 3 — Décisions de la relecture et libellés   ·   statut : à faire
+## Lot 3 — Décisions de la relecture et libellés   ·   statut : en cours
 **Objectif :** Ⓟ trancher les points laissés ouverts, puis les appliquer.
 **Tâches :**
-- [ ] B5 : les cartes pgAdmin et phpLDAPadmin pointent vers `http://<IP LAN>:5050/8081` (`backend/api/infra_info.py:28-44`). Les afficher seulement depuis le LAN, ou les retirer.
+- [x] B5 : les cartes pgAdmin et phpLDAPadmin pointent vers `http://<IP LAN>:5050/8081` (`backend/api/infra_info.py:28-44`). Retirées (chantier failles, F10 : ces ports sont liés à `127.0.0.1`) ; à la place, pour les `admins` seulement, l'indication de tunnel SSH (`admin_tunnel()`, servie par `GET /api/tools/`, `IsLabAdmin`)
 - [ ] « éditeur ouvert » et « Fermer l'éditeur » s'affichent aussi pour une conversation (`mes-projets.component.html:45,216`, `projet.component.html:48`) : passer à « espace ouvert » et « Fermer l'espace »
 - [ ] Vue des apps pour un administrateur qui ne développe pas (perdue avec la fusion d'« Apps du lab »)
 - [ ] Retirer `core/smtp-stale.service.ts` (plus aucun moteur sans `stale` en service) ; commentaire périmé `mes-projets.component.ts:224`
-- [ ] PKCE
+- [x] PKCE (`pkceMethod: 'S256'`) ; ports en `${LAB_BIND_ADDR:-127.0.0.1}` (chantier failles, I1)
 **Tests à passer avant de clore le lot :**
 - [ ] `npm run test:engine` et `ng build` ; parcours `e2edev` à 390 px
-**Vérifié le :**
+**Vérifié le :** 2026-11-01 — non déployé (B5 et PKCE seulement). `bash chantiers/tests/essai.sh lab-admin api` : 20 tests OK (17 + 3 : `AdminToolsTunnelTests`, dont un `developers` non `admins` refusé en 403 sans la ligne du tunnel) ; image `lab-admin-frontend:candidat` : `ng build` OK, `npm run test:engine` 51/51, `pkceMethod:"S256"` dans le bundle ; `docker compose config` : `host_ip: 127.0.0.1`. Parcours `e2edev` à 390 px : après déploiement.
 
 ## Lot 4 — Documentation juste   ·   statut : à faire
 **Objectif :** le README dit l'état réel.

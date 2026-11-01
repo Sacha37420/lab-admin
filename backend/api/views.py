@@ -25,10 +25,12 @@ class AppSpecPublicView(APIView):
 
 
 class AdminToolsView(APIView):
-    """GET /api/tools/ — liens vers les outils d'administration (Keycloak, pgAdmin, phpLDAPadmin)."""
+    """GET /api/tools/ — outils d'administration : lien Keycloak, et l'indication de
+    tunnel SSH pour pgAdmin et phpLDAPadmin (liés à la boucle locale de l'hôte).
+    Permission par défaut ``IsLabAdmin`` : un `developers` sans `admins` prend 403."""
 
     def get(self, request):
-        return Response({'tools': infra_info.admin_tools()})
+        return Response({'tools': infra_info.admin_tools(), 'tunnel': infra_info.admin_tunnel()})
 
 
 class LabUserGroupsView(APIView):
