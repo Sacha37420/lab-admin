@@ -25,8 +25,10 @@ groupe `developers` ; ce qu'il voit ensuite dépend de ce qu'il est.
 Précisions :
 
 - **Services communs** : la page « Mon compte » de Keycloak, Storage (les fichiers), OAuth Hub
-  (liaison du compte GitHub). **Interfaces d'administration** : la console Keycloak, le pgAdmin du
-  lab, l'annuaire, l'éditeur du code du lab.
+  (liaison du compte GitHub). **Interfaces d'administration** : l'éditeur du code du lab, et la
+  commande de tunnel SSH qui ouvre le pgAdmin du lab et l'annuaire (phpLDAPadmin), liés à la boucle
+  locale de l'hôte (`backend/api/infra_info.py`, `admin_tunnel()`). La console Keycloak n'a plus de
+  carte depuis Keycloak 26 : Caddy ne la sert plus (`admin_tools()` rend une liste vide).
 - **Un projet** : état des conteneurs, déploiement d'un commit avec suivi et journal, déploiement
   automatique, journaux, test de cloisonnement, variables d'environnement, base de données et
   console SQL, compte d'envoi d'email, ouverture de l'éditeur (VS Code dans le navigateur),
@@ -212,9 +214,10 @@ backend/api/
 
 ## Tests
 
-**Backend** — quatorze tests. Le rôle de base de données de `lab-admin` ne peut pas créer de base de
-test : on lui donne un PostgreSQL jetable. Depuis la racine du dépôt du lab, l'image
-`lab-admin-backend` étant construite :
+**Backend** — vingt tests au dernier passage (2026-11-01, `backend/api/tests.py`). Le rôle de base
+de données de `lab-admin` ne peut pas créer de base de test : on lui donne un PostgreSQL jetable. Le
+plus simple, depuis la racine du dépôt du lab : `bash chantiers/tests/essai.sh lab-admin`. À la main,
+l'image `lab-admin-backend` étant construite :
 
 ```bash
 docker network create lab-admin-test-net
@@ -228,7 +231,7 @@ docker run --rm --env-file lab-admin/.env --network lab-admin-test-net \
 docker stop lab-admin-test-pg && docker network rm lab-admin-test-net
 ```
 
-**Clients du moteur et d'App Builder** — quarante et un tests, sous Node, sans navigateur ; ils
+**Clients du moteur et d'App Builder** — 51 tests au dernier passage (2026-11-01), sous Node, sans navigateur ; ils
 tiennent la méthode, le chemin et le corps de chaque appel, la lecture des erreurs, le suivi d'un
 job, l'adresse de retour, les réponses de l'API de remise telles que le contrat les écrit, le corps
 exact d'une création avec graine, et les adresses auxquelles le jeton est joint :
@@ -265,8 +268,10 @@ bash scripts/setup2.sh lab-admin --yes
 Le code est copié dans les images : toute modification demande ce redéploiement. Les migrations
 s'appliquent au démarrage du backend.
 
-Variables lues (fichier `.env`, non versionné ; `.env.example` en donne la liste). La plupart sont
-écrites par les scripts du lab, pas à la main.
+Variables lues (fichier `.env`, non versionné ; `.env.example` en donne la liste, sauf
+`KEYCLOAK_REALM`, `KEYCLOAK_ADMIN_*` et `SMTP_*`, qui n'y figurent pas — constaté le 2026-11-08). La
+plupart sont écrites par les scripts du lab, pas à la main (`KEYCLOAK_ADMIN_CLIENT_SECRET` par
+`create-app-client.sh`).
 
 | Variable | Rôle |
 |---|---|
@@ -290,21 +295,19 @@ tiennent à jour mais que le code de ce dépôt ne lit pas.
 
 ## Points connus, laissés ouverts
 
-- **Les liens vers le pgAdmin du lab et l'annuaire** pointent le réseau local : hors de ce réseau
-  ils ne mènent nulle part.
-- **Le schéma OpenAPI et la page Swagger du backend** répondent sans authentification (les données,
-  elles, exigent un administrateur).
-- **Le conteneur du frontend reçoit tout le `.env`**, secrets du backend compris, alors qu'il n'a
-  besoin que de quelques adresses.
-- **Le backend est servi par le serveur de développement de Django** (`runserver`, `Dockerfile`).
-- **Les ports du backend et du frontend sont publiés sur l'hôte**, en plus du reverse proxy.
-- **Le backend renvoie le mot de passe d'un compte créé** dans sa réponse, y compris quand l'email
-  est parti : le masquage est fait par la page.
+- **Le pgAdmin du lab et l'annuaire** ne s'ouvrent que par un tunnel SSH (commande donnée aux
+  `admins` sur la page Services) : leurs ports sont liés à la boucle locale de l'hôte.
 - **Signalement d'un compte d'envoi modifié** : la page s'appuie sur ce que dit le moteur, avec un
   repli en mémoire de session à retirer quand il ne servira plus (`core/smtp-stale.service.ts`).
 - **Un administrateur qui ne développe pas n'a plus de vue des apps du lab** (voir plus haut).
-- **Pas de test de cloisonnement automatisé** (`frontend/e2e/cloisonnement.spec.ts`) pour
-  `lab-admin` lui-même.
+
+Réglés depuis (gardés ici pour mémoire, vérifiés le 2026-11-08 dans le code) : le schéma OpenAPI et
+Swagger n'existent qu'en `DEBUG` (`backend/config/urls.py:28`) ; le frontend ne reçoit plus le `.env`
+mais six variables (`docker-compose.yml`, service `frontend`, `environment:`) ; le backend est servi
+par gunicorn (`backend/Dockerfile:9`) ; les ports sont liés à `127.0.0.1`
+(`docker-compose.yml:32,62`) ; le mot de passe d'un compte créé n'est rendu que si l'email n'est pas
+parti (`UserCreationPasswordTests`) ; le test de cloisonnement existe
+(`frontend/e2e/cloisonnement.spec.ts`, joué par le moteur).
 
 ## Licence
 
