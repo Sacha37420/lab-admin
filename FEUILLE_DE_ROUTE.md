@@ -54,16 +54,22 @@ commande est en tête de `backend/api/tests.py`, ou passer par `bash chantiers/t
 - [ ] `npm run test:engine` et `ng build` ; parcours `e2edev` à 390 px
 **Vérifié le :** 2026-11-01 — non déployé (B5 et PKCE seulement). `bash chantiers/tests/essai.sh lab-admin api` : 20 tests OK (17 + 3 : `AdminToolsTunnelTests`, dont un `developers` non `admins` refusé en 403 sans la ligne du tunnel) ; image `lab-admin-frontend:candidat` : `ng build` OK, `npm run test:engine` 51/51, `pkceMethod:"S256"` dans le bundle ; `docker compose config` : `host_ip: 127.0.0.1`. Parcours `e2edev` à 390 px : après déploiement.
 
-## Lot 4 — Documentation juste   ·   statut : à faire
+## Lot 4 — Documentation juste   ·   statut : livré
 **Objectif :** le README dit l'état réel.
 **Constat [C] :** la section « Points connus, laissés ouverts » (`README.md:291-307`) est fausse sur
 4 lignes : OpenAPI public, frontend recevant tout le `.env`, `runserver`, absence de `cloisonnement.spec.ts`.
 **Tâches :**
-- [ ] Corriger les « Points connus » et la section Tests ; ajouter la commande de test backend
-- [ ] Signaler à l'architecte les lignes périmées de `CLAUDE.md` (l. 66-68, 108)
+- [x] Corriger les « Points connus » et la section Tests ; ajouter la commande de test backend
+  (travail de nuit du 2026-11-08 : points réglés déplacés dans un paragraphe « Réglés depuis » avec
+  leur preuve ; ports, mot de passe rendu, interfaces d'administration et nombres de tests mis à jour ;
+  `bash chantiers/tests/essai.sh lab-admin` cité)
+- [x] Signaler à l'architecte les lignes périmées de `CLAUDE.md` (l. 66-68, 108) — déjà fait :
+  cochées dans `to_do_global.md` § T6
 **Tests à passer avant de clore le lot :**
-- [ ] Le grep de `Apps du lab`, `Debug` et `runserver` dans le README ne trouve que des mentions historiques
-**Vérifié le :**
+- [x] Le grep de `Apps du lab`, `Debug` et `runserver` dans le README ne trouve que des mentions historiques
+**Vérifié le :** 2026-11-08 — `grep -n "runserver\|Apps du lab\|Debug\|debug" README.md` : une seule ligne,
+la liste des anciennes adresses redirigées (`/debug`). Relecture des affirmations du README contre
+`backend/config/urls.py`, `backend/Dockerfile`, `docker-compose.yml`, `backend/api/infra_info.py`.
 
 ## Mise en service — chantier « failles » (2026-11-01)
 Les mentions « non déployé » ci-dessus datent d'avant cette mise en service. Image construite pendant
