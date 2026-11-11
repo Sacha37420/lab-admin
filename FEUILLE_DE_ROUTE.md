@@ -77,12 +77,13 @@ la liste des anciennes adresses redirigées (`/debug`). Relecture des affirmatio
 - [x] `SpecLink` (table `spec_links`, migration `0005`) et `GET/PUT /api/spec-links/<app>/` (`IsLabMember` : porte `admins,developers`, lignes de l'appelant seulement)
 - [x] « Mes spécifications » : aperçu des lots et du cahier (texte, jamais HTML) avant la création ; lien enregistré après une création réussie ; lien « Connecter Claude Code / Vibe à App Builder »
 - [x] Page projet : bloc « Spécification d'origine », alerte quand l'empreinte a changé, « Transmettre au projet » par un ticket (`POST /projects/<app>/tickets`)
-- [ ] Ⓟ Mise en service et parcours en navigateur réel (`chantiers/app-builder-v2/rapports/D.md`, « Parcours navigateur ») ; un ticket réel sur un dépôt créé par le moteur
+- [x] Mise en service (2026-11-11, migration `0005`) et navigateur réel : « Mes spécifications » montre une spec prête, son aperçu de lots et de cahier, le lien Claude Code / Vibe
+- [ ] Ⓟ Création réelle depuis une spec (compte GitHub humain), puis « Transmettre au projet » : ticket réel sur le dépôt créé
 **Tests à passer avant de clore le lot :**
 - [x] `python manage.py test api.tests.SpecLinkTests api.tests.DefaultDenyTests` (membre accepté, ligne d'autrui invisible et intouchable, non-membre refusé, valeurs invalides 400, inventaire des routes ouvertes)
 - [x] `npm run test:engine` (`spec-link.client.spec.ts` : ticket ≤ 60 000 même avec un cahier de 200 000 caractères, aucune ligne `#` de la spec hors bloc, ni jeton ni historique)
 - [x] `npx ng build` sans erreur
-**Vérifié le :** 2026-11-11 — tests backend sur PostgreSQL jetable : 29 OK ; `npm run test:engine` : 62/62 ; `npx ng build` sans erreur ; image du commit `e6b8505` construite pendant que l'ancienne tournait, `scripts/app-test.sh lab-admin` : 29 OK. **Non mis en service** (refusé à l'agent de nuit, à faire par le propriétaire).
+**Vérifié le :** 2026-11-11 — tests backend sur PostgreSQL jetable : 29 OK ; `npm run test:engine` : 62/62 ; `npx ng build` sans erreur ; image du commit `e6b8505` construite pendant que l'ancienne tournait, `scripts/app-test.sh lab-admin` : 29 OK. **Mis en service le 2026-11-11** (fusion `dabd8ba`, même image) ; cloisonnement `lab-runner` 3/3 ; `/api/spec-links/…` sans jeton → 403.
 
 ## Mise en service — chantier « failles » (2026-11-01)
 Les mentions « non déployé » ci-dessus datent d'avant cette mise en service. Image construite pendant
