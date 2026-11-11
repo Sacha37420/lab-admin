@@ -16,6 +16,7 @@ import { DATE_FORMAT, shortSha } from '../../core/format';
 import { MaBaseComponent } from '../../shared/ma-base/ma-base.component';
 import { EmailProjetComponent } from '../../shared/email/email-projet.component';
 import { EssaiProjetComponent } from '../../shared/essai/essai-projet.component';
+import { SpecOrigineComponent } from '../../shared/spec-origine/spec-origine.component';
 
 /**
  * Page d'un projet (`/projets/<app>`, contrat multi-dev I6) : tout ce qu'un
@@ -27,7 +28,7 @@ import { EssaiProjetComponent } from '../../shared/essai/essai-projet.component'
 @Component({
   selector: 'app-projet',
   standalone: true,
-  imports: [FormsModule, RouterLink, DatePipe, JobSuiviComponent, MaBaseComponent, EmailProjetComponent, EnvVarsComponent, EssaiProjetComponent],
+  imports: [FormsModule, RouterLink, DatePipe, JobSuiviComponent, MaBaseComponent, EmailProjetComponent, EnvVarsComponent, EssaiProjetComponent, SpecOrigineComponent],
   templateUrl: './projet.component.html',
 })
 export class ProjetComponent implements OnInit {

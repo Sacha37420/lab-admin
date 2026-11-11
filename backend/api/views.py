@@ -1,3 +1,4 @@
+import re
 import secrets
 import string
 
@@ -8,7 +9,9 @@ from rest_framework import status
 from rest_framework.response import Response
 from . import keycloak_admin, lab_groups, infra_info
 from .keycloak_admin import KeycloakAdminError
+from .models import SpecLink
 from .models_appbuilder import AppSpec as RemoteAppSpec
+from .permissions import IsLabMember
 from .serializers_appbuilder import serialize_appspec
 
 
@@ -172,3 +175,89 @@ class LabUserCreateView(APIView):
         if not email_sent:
             body['password'] = password
         return Response(body, status=status.HTTP_201_CREATED)
+
+
+# ── Lien projet ↔ spécification App Builder (chantier app-builder-v2, I8) ─────────
+
+# Nom de projet tel que le moteur et le runner l'acceptent. `\Z` et non `$` : `$` laisse
+# passer un retour à la ligne final.
+_APP_RE = re.compile(r'[a-z][a-z0-9-]{0,62}\Z')
+_FINGERPRINT_RE = re.compile(r'sha256:[0-9a-f]{64}\Z')
+_SPEC_ID_MAX = 2_147_483_647      # PositiveIntegerField
+
+
+def _spec_link_body(link: SpecLink) -> dict:
+    return {
+        'app': link.app,
+        'spec_id': link.spec_id,
+        'fingerprint': link.fingerprint,
+        'created_at': link.created_at.isoformat(),
+    }
+
+
+class SpecLinkView(APIView):
+    """
+    GET /api/spec-links/<app>/ — le lien de l'APPELANT pour ce projet, 404 s'il n'en a pas.
+    PUT /api/spec-links/<app>/ — `{"spec_id": 12, "fingerprint": "sha256:…" | ""}` :
+    crée (201) ou remplace (200) la ligne de l'appelant ; `created_at` est celle de la
+    première écriture.
+
+    Ouverte aux membres de la porte (``IsLabMember``, déclarée ici : la permission par
+    défaut est ``IsLabAdmin``). L'appelant est identifié par l'email de son jeton et ne
+    voit, n'écrit que SES lignes — un superutilisateur pas plus qu'un autre. Rien n'est
+    vérifié auprès du moteur ni d'App Builder : un lien vers un projet qui n'est pas le
+    sien, ou vers une spécification qui n'existe pas, ne donne accès à rien (l'interface
+    relit tout avec le jeton de l'utilisateur).
+    """
+
+    permission_classes = [IsLabMember]
+    http_method_names = ['get', 'put', 'head', 'options']
+
+    @staticmethod
+    def _owner(request) -> str:
+        return request.user.email.strip().lower()
+
+    @staticmethod
+    def _bad_app(app: str):
+        if _APP_RE.match(app):
+            return None
+        return Response({'error': 'invalid', 'detail': 'Nom de projet invalide.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    def get(self, request, app: str):
+        bad = self._bad_app(app)
+        if bad:
+            return bad
+        link = SpecLink.objects.filter(owner_email=self._owner(request), app=app).first()
+        if link is None:
+            return Response({'error': 'not_found', 'detail': 'Aucune spécification liée à ce projet.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(_spec_link_body(link))
+
+    def put(self, request, app: str):
+        bad = self._bad_app(app)
+        if bad:
+            return bad
+        data = request.data
+        if not isinstance(data, dict):
+            return Response({'error': 'invalid', 'detail': 'Corps attendu : un objet JSON.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        errors = []
+        spec_id = data.get('spec_id')
+        # `bool` est un `int` en Python : `true` n'est pas un numéro de spécification.
+        if isinstance(spec_id, bool) or not isinstance(spec_id, int) or not 0 < spec_id <= _SPEC_ID_MAX:
+            errors.append('spec_id : entier positif attendu.')
+        fingerprint = data.get('fingerprint', '')
+        if fingerprint is None:
+            fingerprint = ''
+        if not isinstance(fingerprint, str) or (fingerprint and not _FINGERPRINT_RE.match(fingerprint)):
+            errors.append('fingerprint : « sha256: » suivi de 64 chiffres hexadécimaux, ou vide.')
+        if errors:
+            return Response({'error': 'invalid', 'detail': ' '.join(errors)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        link, created = SpecLink.objects.update_or_create(
+            owner_email=self._owner(request), app=app,
+            defaults={'spec_id': spec_id, 'fingerprint': fingerprint},
+        )
+        return Response(_spec_link_body(link),
+                        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)

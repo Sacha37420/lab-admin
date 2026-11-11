@@ -571,3 +571,11 @@ a.pj-badge { min-height: 44px; text-decoration: none; &:hover { border-color: va
   border-top: 1px solid var(--border); padding-top: var(--space-3);
 }
 .pj-specs-text { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); font-size: var(--text-sm); line-height: 1.5; }
+/* Aperçu de la remise (chantier app-builder-v2, P2) : lots et cahier, en texte. */
+.pj-specs-sub { margin: 0; font-size: var(--text-sm); color: var(--text); }
+.pj-specs-lots { margin: 0; padding-left: var(--space-6); font-size: var(--text-sm); color: var(--text); line-height: 1.6; }
+.pj-specs-lots li { overflow-wrap: anywhere; }
+.pj-specs-cahier > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--accent); }
+.pj-specs-cahier-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Page projet : « Spécification d'origine ». */
+.pj-origin-changed { color: var(--warning); }

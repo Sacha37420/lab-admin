@@ -11,6 +11,12 @@
     Les applications que vous avez décrites dans App Builder. Une spécification prête se construit d'ici :
     le lab crée le projet avec sa feuille de route et son cahier des charges, il ne reste qu'à le développer lot par lot.
   </p>
+  @if (aiConnectUrl; as u) {
+    <p class="pj-hint">
+      <a [href]="u" target="_blank" rel="noopener" id="sp-ai-connect">Connecter Claude Code / Vibe à App Builder ↗</a>
+      — pour faire écrire ou relire une spécification par votre propre assistant.
+    </p>
+  }
 
   @if (loading()) {
     <p class="pj-hint" role="status">Lecture de vos spécifications…</p>
@@ -109,6 +115,7 @@
                 }
               } @else if (plan(); as pl) {
                 <dl class="pj-dl">
+                  <dt>Spécification</dt><dd>n° {{ pl.kit.spec.id }}</dd>
                   <dt>Projet</dt><dd><code>{{ pl.kit.create.name }}</code></dd>
                   <dt>Type</dt><dd>{{ typeLabel(pl.kit.create.type) }}</dd>
                   <dt>Groupes autorisés</dt><dd>{{ pl.kit.create.required_groups.join(', ') }}</dd>
@@ -118,6 +125,22 @@
                     <span [class.pj-error]="context(pl.kit.context).over">{{ context(pl.kit.context).lot }}</span>
                   </dd>
                 </dl>
+
+                <!-- ── Aperçu de ce qui sera remis (P2) : texte seulement ──────── -->
+                <h4 class="pj-specs-sub">Lots de développement remis ({{ planLots().length }})</h4>
+                @if (planLots().length) {
+                  <ol class="pj-specs-lots">
+                    @for (l of planLots(); track $index) { <li [attr.value]="l.number">{{ l.title }}</li> }
+                  </ol>
+                } @else {
+                  <p class="pj-hint">Aucun titre de lot lisible dans la feuille de route remise.</p>
+                }
+                <details class="pj-specs-cahier" #cahier (toggle)="cahierOpen.set(cahier.open)">
+                  <summary>Cahier des charges ({{ pl.kit.seed.cahier_des_charges_md.length }} caractères)</summary>
+                  @if (cahierOpen()) {
+                    <pre class="pj-pre pj-specs-cahier-text">{{ pl.kit.seed.cahier_des_charges_md }}</pre>
+                  }
+                </details>
 
                 @if (!allows(pl)) {
                   <!-- Nom refusé par le moteur : pas de création possible d'ici. -->
@@ -153,6 +176,9 @@
                     <app-job-suivi [jobId]="jobId()" (fini)="onJobDone($event)" />
                     @if (createdApp()) {
                       <div><a class="btn-primary" [routerLink]="['/projets', createdApp()]">Ouvrir {{ createdApp() }}</a></div>
+                      @if (linkFailed()) {
+                        <p class="pj-hint" role="status">Le projet est créé, mais son lien avec cette spécification n'a pas pu être enregistré : sa page le retrouvera par le nom.</p>
+                      }
                     }
                   } @else {
                     <div>

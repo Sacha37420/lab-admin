@@ -18,7 +18,7 @@
  * Le service injectable est `handoff.service.ts`.
  */
 import { Observable, catchError, map, of, switchMap, throwError } from 'rxjs';
-import { NameCheck, NewProject, Project, ProjectType, toEngineError } from './engine.client';
+import { NameCheck, NewProject, Project, ProjectType, Ticket, TicketRequest, toEngineError } from './engine.client';
 
 // ── I1 : formes ───────────────────────────────────────────────────────────────
 
@@ -43,6 +43,12 @@ export interface HandoffSpec {
   ready: boolean;
   blockers: HandoffBlocker[];
   counts: HandoffCounts;
+  /**
+   * Empreinte du contenu remis (chantier app-builder-v2, I7) : `sha256:<64 hex>`.
+   * ABSENTE (clé non posée) quand App Builder ne la rend pas (ancienne image) ou
+   * qu'elle n'a pas la forme attendue : rien n'est alors comparé.
+   */
+  fingerprint?: string;
 }
 
 /** Estimations en jetons ; `lot_budget_tokens` est le plafond appliqué à un lot. */
@@ -53,7 +59,7 @@ export interface HandoffSpecDetail extends HandoffSpec { description: string; co
 
 /** `GET /api/handoff/specs/<id>/kit/` (200). */
 export interface HandoffKit {
-  spec: { id: number; name: string; updated_at: string };
+  spec: { id: number; name: string; updated_at: string; fingerprint?: string };
   create: { name: string; type: ProjectType; required_groups: string[] };
   seed: { lots_md: string; cahier_des_charges_md: string };
   context: HandoffContext;
@@ -176,7 +182,14 @@ function spec(v: unknown): HandoffSpec | null {
     ready: v['ready'] === true && blocked.length === 0,
     blockers: blocked,
     counts: { data_models: count(c['data_models']), endpoints: count(c['endpoints']), pages: count(c['pages']), lots: count(c['lots']) },
+    ...fingerprint(v['fingerprint']),
   };
+}
+
+/** Forme d'une empreinte de spécification (I7). */
+export const FINGERPRINT_RE = /^sha256:[0-9a-f]{64}$/;
+function fingerprint(v: unknown): { fingerprint?: string } {
+  return typeof v === 'string' && FINGERPRINT_RE.test(v) ? { fingerprint: v } : {};
 }
 
 const TYPES: readonly string[] = ['django', 'django-angular', 'angular'];
@@ -199,7 +212,7 @@ function kit(v: unknown, id: number): HandoffKit | null {
   if (!Array.isArray(c['required_groups']) || groups.length === 0 || groups.length !== c['required_groups'].length) return null;
   if (!lots || !cahier) return null;
   return {
-    spec: { id, name: text(s['name']), updated_at: text(s['updated_at']) },
+    spec: { id, name: text(s['name']), updated_at: text(s['updated_at']), ...fingerprint(s['fingerprint']) },
     create: { name, type: type as ProjectType, required_groups: groups },
     seed: { lots_md: lots, cahier_des_charges_md: cahier },
     context: context(v['context']),
@@ -327,4 +340,193 @@ export function contextSummary(c: HandoffContext): { cahier: string; lot: string
     share,
     over: c.lot_budget_tokens > 0 && c.largest_lot_tokens > c.lot_budget_tokens,
   };
+}
+
+// ── Aperçu de la remise (chantier app-builder-v2, P2) ─────────────────────────
+
+/** Un lot « à faire » de la graine, pour l'affichage. */
+export interface RoadmapTitle { number: number; title: string; }
+
+/**
+ * Titres de lot d'un `lots_md` : l'expression `_TITLE` de `lab-mcp/labmcp/seed.py`
+ * (`^## Lot ([0-9]+) — .+·[[:space:]]*statut : à faire[[:space:]]*$`), ligne à ligne,
+ * lignes coupées sur « \n » seul. AFFICHAGE SEULEMENT : c'est le moteur qui valide
+ * la graine. `title` : ce qui sépare « — » du dernier « · », sans caractère de
+ * contrôle, au plus 200 caractères.
+ */
+export function roadmapTitles(lotsMd: string): RoadmapTitle[] {
+  const re = /^## Lot ([0-9]+) — ([^\n]+)·[ \t\v\f]*statut : à faire[ \t\v\f]*$/;
+  const out: RoadmapTitle[] = [];
+  for (const line of (typeof lotsMd === 'string' ? lotsMd : '').split('\n')) {
+    const m = re.exec(line);
+    if (!m) continue;
+    out.push({ number: Number(m[1]), title: oneLine(m[2], 200) || `Lot ${m[1]}` });
+  }
+  return out;
+}
+
+/** Une ligne de texte sûre : contrôles et retours à la ligne remplacés, espaces resserrés, coupée à `max` points de code. */
+function oneLine(v: string, max: number): string {
+  const flat = v.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const chars = Array.from(flat);
+  return chars.length > max ? chars.slice(0, max - 1).join('') + '…' : flat;
+}
+
+// ── Spécification d'origine d'un projet (P2) et « elle a changé » (P3) ────────
+
+/** Le lien enregistré par lab-admin (I8), tel que la page le tient. */
+export interface SpecLinkRef { app: string; spec_id: number; fingerprint: string; }
+
+export interface OriginSpec {
+  /** La spécification retrouvée parmi celles de l'appelant, ou `null`. */
+  spec: HandoffSpec | null;
+  /** Comment : par le lien enregistré, ou par le nom de projet (repli d'avant I8). */
+  via: 'link' | 'name' | null;
+  /** Lien enregistré vers une spécification qui n'est plus dans la liste : son numéro. */
+  missingId: number | null;
+}
+
+/**
+ * La spécification d'origine du projet `app`, parmi LES SPÉCIFICATIONS DE
+ * L'APPELANT : par le lien d'abord (il survit à un renommage), sinon par
+ * `project_name === app`. L'appelant de cette fonction s'assure que le projet
+ * est le sien (sinon une spec à lui serait rapprochée du projet d'un autre).
+ */
+export function originSpec(app: string, specs: readonly HandoffSpec[], link: SpecLinkRef | null): OriginSpec {
+  if (link && link.app === app) {
+    const s = specs.find(x => x.id === link.spec_id) ?? null;
+    return { spec: s, via: 'link', missingId: s ? null : link.spec_id };
+  }
+  const byName = app ? specs.find(x => x.project_name === app) ?? null : null;
+  return { spec: byName, via: byName ? 'name' : null, missingId: null };
+}
+
+/**
+ * La spécification a-t-elle changé depuis la création (ou le dernier envoi) ?
+ * Seulement si les DEUX empreintes sont connues et diffèrent : une empreinte
+ * absente d'un côté ou de l'autre ne fait jamais annoncer « modifiée ».
+ */
+export function specChanged(link: Pick<SpecLinkRef, 'fingerprint'> | null, spec: Pick<HandoffSpec, 'fingerprint'> | null): boolean {
+  const before = link?.fingerprint ?? '', now = spec?.fingerprint ?? '';
+  return FINGERPRINT_RE.test(before) && FINGERPRINT_RE.test(now) && before !== now;
+}
+
+// ── Ticket « spécification modifiée » (P3, I8) ───────────────────────────────
+
+/** Bornes du moteur (`POST /projects/<app>/tickets`, API.md §3.5). */
+export const TICKET_TITLE_MAX = 256;
+export const TICKET_BODY_MAX = 60_000;
+/** Au-delà, le cahier n'est pas recopié dans le ticket : on renvoie vers App Builder. */
+export const TICKET_CAHIER_MAX = 55_000;
+const TICKET_LOTS_MAX = 60;
+
+/** Texte d'App Builder rendu inoffensif : sans NUL, retours chariot ramenés à « \n ». */
+function plain(v: string): string {
+  return v.replace(/\r\n?/g, '\n').replace(/\u0000/g, '');
+}
+
+/**
+ * Clôture d'un bloc `~~~` qu'aucune ligne du texte ne peut fermer : plus longue
+ * que toute suite de « ~ » en tête de ligne (après au plus 3 espaces, règle
+ * CommonMark de fermeture). Sans elle, une ligne `~~~` du cahier fermerait le
+ * bloc, et un `# titre` qui la suit sortirait en clair dans le ticket.
+ */
+export function tildeFence(content: string): string {
+  let longest = 0;
+  for (const line of content.split('\n')) {
+    const m = /^ {0,3}(~+)/.exec(line);
+    if (m) longest = Math.max(longest, m[1].length);
+  }
+  return '~'.repeat(Math.max(3, longest + 1));
+}
+
+/**
+ * Le ticket qui porte une version de la spécification au dépôt du projet
+ * (`POST /projects/<app>/tickets`, `scope: "app"`). Composé UNIQUEMENT de champs
+ * du kit (jamais de jeton, jamais d'historique de conversation : le kit n'en a pas).
+ *
+ * - titre ≤ 256, sans retour à la ligne ;
+ * - corps ≤ 60 000, première ligne : le marqueur
+ *   `<!-- lab-spec-update id=<n> fingerprint=sha256:… -->` (sans `fingerprint=`
+ *   quand App Builder n'en rend pas) ;
+ * - aucune ligne venue de la spécification ne commence par « # » hors du bloc
+ *   `~~~` : les lots sont listés « - Lot n — titre », les seuls titres Markdown
+ *   sont ceux, fixes, de ce gabarit ;
+ * - le cahier est recopié dans un bloc `~~~markdown` s'il fait au plus
+ *   55 000 caractères et tient dans le corps ; sinon, une phrase renvoie à
+ *   App Builder (`appBuilderUrl?spec=<id>` si l'adresse est connue).
+ */
+export function specUpdateTicket(k: HandoffKit, appBuilderUrl: string | null = null): TicketRequest {
+  const id = k.spec.id;
+  const name = oneLine(plain(k.spec.name || ''), 120);
+  const fp = typeof k.spec.fingerprint === 'string' && FINGERPRINT_RE.test(k.spec.fingerprint) ? k.spec.fingerprint : '';
+  const state = /^[0-9][0-9T:.+\-Z ]{9,39}$/.test(k.spec.updated_at || '') ? k.spec.updated_at : '';
+
+  const title = oneLine(`Spécification App Builder n° ${id} modifiée${name ? ` — ${name}` : ''}`, TICKET_TITLE_MAX);
+
+  const where = appBuilderUrl && /^https?:\/\/[^\s<>"']+$/.test(appBuilderUrl)
+    ? `${appBuilderUrl}?spec=${id}` : '';
+  const head: string[] = [
+    `<!-- lab-spec-update id=${id}${fp ? ` fingerprint=${fp}` : ''} -->`,
+    '',
+    `La spécification App Builder n° ${id}${name ? ` (« ${name} »)` : ''} a changé depuis la création de ce projet, ou depuis son dernier envoi ici.`,
+  ];
+  if (state) head.push(`État transmis : ${state}.`);
+  if (fp) head.push(`Empreinte : \`${fp}\`.`);
+  head.push(
+    '',
+    'À traiter avant le prochain lot : comparer avec `CAHIER_DES_CHARGES.md` et `FEUILLE_DE_ROUTE.md`, '
+    + 'proposer au développeur la mise à jour du cahier et des lots « à faire » (jamais un lot livré), '
+    + 'puis fermer ce ticket en citant le commit. Rien n\'est appliqué sans le développeur.',
+    '',
+    '## Lots de la nouvelle version',
+    '',
+  );
+  const lots = roadmapTitles(plain(k.seed.lots_md));
+  if (lots.length === 0) head.push('(aucun lot « à faire » lisible dans cette version)');
+  for (const l of lots.slice(0, TICKET_LOTS_MAX)) head.push(`- Lot ${l.number} — ${l.title}`);
+  if (lots.length > TICKET_LOTS_MAX) head.push(`- … et ${lots.length - TICKET_LOTS_MAX} autre(s) lot(s), à lire dans App Builder.`);
+  head.push('', '## Cahier des charges (nouvelle version)', '');
+
+  const before = head.join('\n');
+  const cahier = plain(k.seed.cahier_des_charges_md);
+  const fence = tildeFence(cahier);
+  const block = `${fence}markdown\n${cahier}${cahier.endsWith('\n') ? '' : '\n'}${fence}\n`;
+  const tooLong = `Trop long pour un ticket (${formatCount(Array.from(cahier).length)} caractères) : `
+    + (where ? `le lire dans App Builder, page Livrables — ${where}\n` : 'le lire dans App Builder, page Livrables.\n');
+
+  let body = cahier.length <= TICKET_CAHIER_MAX && before.length + 1 + block.length <= TICKET_BODY_MAX
+    ? `${before}\n${block}` : `${before}\n${tooLong}`;
+  // Garde finale (ne se déclenche pas avec les bornes ci-dessus) : jamais plus que le moteur n'accepte.
+  if (body.length > TICKET_BODY_MAX) body = `${head.slice(0, 3).join('\n')}\n\n${tooLong}`;
+  return { title, body, scope: 'app' };
+}
+
+/** Ce que rend l'envoi : le ticket ouvert, et le lien mis à jour (`null` si son écriture a échoué). */
+export interface Transmitted { ticket: Ticket; link: SpecLinkRef | null; }
+
+/** Échec de l'envoi : à la lecture du kit (App Builder) ou à l'ouverture du ticket (moteur). */
+export interface TransmitError { stage: 'kit' | 'ticket'; cause: unknown; }
+
+/**
+ * « Transmettre au projet » : relit le kit (la version ACTUELLE, avec le jeton de
+ * l'utilisateur), ouvre le ticket par la route existante du moteur, puis met à
+ * jour le lien de lab-admin avec l'empreinte transmise. Le ticket ouvert est
+ * rendu même si l'écriture du lien échoue (il existe : ne pas le reproposer en
+ * erreur). Une erreur d'App Builder (dont `not_ready`) ou du moteur remonte
+ * telle quelle, et rien n'est écrit ; l'erreur levée est un `TransmitError` qui dit laquelle.
+ */
+export function transmitSpec(handoff: Pick<HandoffClient, 'kit'>,
+                             engine: { openTicket(app: string, t: TicketRequest): Observable<Ticket> },
+                             links: { put(app: string, v: { spec_id: number; fingerprint: string }): Observable<SpecLinkRef> },
+                             app: string, specId: number, appBuilderUrl: string | null): Observable<Transmitted> {
+  return handoff.kit(specId).pipe(
+    catchError(cause => throwError((): TransmitError => ({ stage: 'kit', cause }))),
+    switchMap(k => engine.openTicket(app, specUpdateTicket(k, appBuilderUrl)).pipe(
+      catchError(cause => throwError((): TransmitError => ({ stage: 'ticket', cause }))),
+      switchMap(ticket =>
+      links.put(app, { spec_id: k.spec.id, fingerprint: k.spec.fingerprint ?? '' }).pipe(
+        map(link => ({ ticket, link })),
+        catchError(() => of({ ticket, link: null })),
+      )))));
 }
