@@ -60,6 +60,11 @@
         }
       </div>
 
+      <!-- ── Spécification d'origine (app-builder-v2, P2/P3) : seulement sur un projet à moi ─ -->
+      @if (!!me()?.uid && me()?.uid === p.owner) {
+        <app-spec-origine [app]="p.name" [canAct]="true" />
+      }
+
       <!-- ── Adresse d'essai (essai-dev I2) : actions seulement si ce projet est le mien ─ -->
       <app-essai-projet [app]="p.name" [canAct]="!!me()?.uid && me()?.uid === p.owner" />
 

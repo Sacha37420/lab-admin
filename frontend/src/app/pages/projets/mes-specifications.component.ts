@@ -5,10 +5,12 @@ import { RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { EngineService } from '../../core/engine.service';
 import { HandoffService } from '../../core/handoff.service';
+import { SpecLinkService } from '../../core/spec-link.service';
+import { linkFromKit } from '../../core/spec-link.client';
 import { EngineError, Job, Project, toEngineError } from '../../core/engine.client';
 import {
-  HandoffContext, HandoffError, HandoffSpec, HandoffSpecDetail, LaunchPlan,
-  appTypeLabel, contextSummary, existingProject, launchPlan, planAllowsCreation, seededProject, toHandoffError, toListError,
+  HandoffContext, HandoffError, HandoffSpec, HandoffSpecDetail, LaunchPlan, RoadmapTitle,
+  appTypeLabel, roadmapTitles, contextSummary, existingProject, launchPlan, planAllowsCreation, seededProject, toHandoffError, toListError,
 } from '../../core/handoff.client';
 import { JobSuiviComponent } from '../../shared/job-suivi/job-suivi.component';
 import { DATE_FORMAT } from '../../core/format';
@@ -28,7 +30,12 @@ import { DATE_FORMAT } from '../../core/format';
  * App Builder injoignable, refus ou adresse non configurée : un message dans
  * le bloc, rien d'autre de la page n'en dépend.
  *
- * Tout texte venu d'App Builder est rendu en texte brut (interpolation).
+ * Tout texte venu d'App Builder est rendu en texte brut (interpolation) — le
+ * cahier des charges compris, dans un `<pre>` (jamais de Markdown → HTML).
+ *
+ * Après une création réussie, le lien projet ↔ spécification (et l'empreinte du
+ * contenu remis) est enregistré dans lab-admin (`/api/spec-links/`, I8) : la page
+ * du projet s'en sert pour dire si la spécification a changé depuis.
  */
 @Component({
   selector: 'app-mes-specifications',
@@ -39,6 +46,7 @@ import { DATE_FORMAT } from '../../core/format';
 export class MesSpecificationsComponent implements OnInit {
   private handoff = inject(HandoffService);
   private engine = inject(EngineService);
+  private links = inject(SpecLinkService);
 
   /** Les projets du compte connecté (jamais ceux d'un autre) : sert à reconnaître une spécification déjà construite. */
   @Input() projects: Project[] = [];
@@ -55,6 +63,8 @@ export class MesSpecificationsComponent implements OnInit {
   readonly dateFormat = DATE_FORMAT;
   readonly typeLabel = appTypeLabel;
   readonly appBuilderUrl = this.handoff.appBuilderUrl;
+  /** Page de connexion de Claude Code / Vibe au MCP d'App Builder (app-builder-v2, I5). */
+  readonly aiConnectUrl = this.appBuilderUrl ? `${this.appBuilderUrl}connexion-ia` : null;
 
   loading = signal(true);
   error = signal<HandoffError | null>(null);
@@ -106,6 +116,12 @@ export class MesSpecificationsComponent implements OnInit {
   createError = signal<EngineError | null>(null);
   jobId = signal('');
   createdApp = signal('');
+  /** Lots « à faire » du kit, pour l'aperçu (affichage seulement : le moteur valide la graine). */
+  planLots = signal<RoadmapTitle[]>([]);
+  /** Le dépliant « Cahier des charges » est ouvert : son texte n'est mis dans la page qu'alors. */
+  cahierOpen = signal(false);
+  /** Le lien projet ↔ spécification n'a pas pu être enregistré (le projet, lui, existe). */
+  linkFailed = signal(false);
   private planSub?: Subscription;
 
   readonly allows = planAllowsCreation;
@@ -121,7 +137,7 @@ export class MesSpecificationsComponent implements OnInit {
     this.launchId.set(s.id);
     this.preparing.set(true);
     this.planSub = launchPlan(this.handoff, this.engine, s.id).subscribe({
-      next: plan => { this.plan.set(plan); this.preparing.set(false); },
+      next: plan => { this.plan.set(plan); this.planLots.set(roadmapTitles(plan.kit.seed.lots_md)); this.preparing.set(false); },
       error: err => {
         const e = toHandoffError(err);
         this.planError.set(e);
@@ -152,7 +168,15 @@ export class MesSpecificationsComponent implements OnInit {
 
   onJobDone(job: Job | null): void {
     this.jobDone.set(true);
-    if (job?.result?.ok) this.createdApp.set(job.result.app ?? job.app);
+    const plan = this.plan();
+    if (job?.result?.ok) {
+      const app = job.result.app ?? job.app;
+      this.createdApp.set(app);
+      // I8 : le projet garde la trace de la spécification et de l'empreinte remise.
+      if (plan && app) {
+        this.links.put(app, linkFromKit(plan.kit)).subscribe({ error: () => this.linkFailed.set(true) });
+      }
+    }
     this.created.emit();
   }
 
@@ -162,6 +186,9 @@ export class MesSpecificationsComponent implements OnInit {
     this.launchId.set(null);
     this.preparing.set(false);
     this.plan.set(null);
+    this.planLots.set([]);
+    this.cahierOpen.set(false);
+    this.linkFailed.set(false);
     this.planError.set(null);
     this.visibility = 'private';
     this.sending.set(false);

@@ -26,3 +26,27 @@ class IsLabAdmin(BasePermission):
         if not user or not getattr(user, 'is_authenticated', False):
             return False
         return bool(user_groups(user) & settings.LAB_ADMIN_GROUPS)
+
+
+# Les groupes de la porte de lab-admin (`KEYCLOAK_REQUIRED_GROUPS=admins,developers`).
+# Constante de code, comme `LAB_ADMIN_GROUPS` : la permission ci-dessous ne doit pas
+# s'ouvrir davantage si la porte était un jour élargie dans le `.env`.
+LAB_DOOR_GROUPS = frozenset({'admins', 'developers'})
+
+
+class IsLabMember(BasePermission):
+    """Authentifié ET membre d'un groupe de la porte (``admins`` ou ``developers``).
+
+    À déclarer EXPLICITEMENT sur une vue ouverte aux développeurs (la permission par
+    défaut reste ``IsLabAdmin``). Ne donne accès à aucune donnée par elle-même : une
+    vue qui la porte ne rend que les lignes de l'appelant (``SpecLinkView``)."""
+
+    message = "Réservé aux membres du lab (groupe 'admins' ou 'developers')."
+
+    def has_permission(self, request, view) -> bool:
+        user = request.user
+        if not user or not getattr(user, 'is_authenticated', False):
+            return False
+        if not getattr(user, 'email', ''):
+            return False
+        return bool(user_groups(user) & LAB_DOOR_GROUPS)

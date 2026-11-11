@@ -1,0 +1,57 @@
+<!-- Spécification d'origine (chantier app-builder-v2, P2/P3) : rien sans App Builder, ni sur le projet d'un autre. -->
+@if (configured && canAct) {
+  @if (loading()) {
+    <div class="pj-card"><h2>Spécification d'origine</h2><p class="pj-hint" role="status">Lecture de vos spécifications…</p></div>
+  } @else if (error(); as e) {
+    <div class="pj-card"><h2>Spécification d'origine</h2><p class="pj-hint" role="status">{{ e.detail }}</p></div>
+  } @else if (origin(); as o) {
+    @if (o.spec; as s) {
+      <div class="pj-card" id="spec-origine">
+        <h2>Spécification d'origine</h2>
+        <dl class="pj-dl">
+          <dt>Spécification</dt><dd>{{ s.name || 'Spécification sans nom' }} — n° {{ s.id }}</dd>
+          <dt>État</dt>
+          <dd>
+            @if (s.ready) { <span class="pj-badge pj-ok">prête</span> } @else { <span class="pj-badge pj-warn">à compléter</span> }
+          </dd>
+          <dt>Rapprochement</dt>
+          <dd>{{ o.via === 'link' ? 'enregistré à la création du projet' : 'par le nom de projet (aucun lien enregistré)' }}</dd>
+        </dl>
+        @if (changed()) {
+          <p class="pj-origin-changed" role="status" id="spec-origine-changed">La spécification a changé depuis la création du projet.</p>
+        } @else if (!link()?.fingerprint || !s.fingerprint) {
+          <p class="pj-hint">Impossible de dire si la spécification a changé depuis la création du projet (empreinte inconnue) : vous pouvez la transmettre quand même.</p>
+        }
+        <p class="pj-hint">
+          « Transmettre au projet » ouvre un ticket dans le dépôt de ce projet avec les lots et le cahier des charges
+          de la version actuelle. Votre assistant le traite avant le lot suivant, en vous proposant les changements ;
+          rien n'est modifié dans le dépôt sans vous.
+        </p>
+        <div class="pj-row">
+          @if (specUrl(s.id); as u) {
+            <a class="btn-secondary" [href]="u" target="_blank" rel="noopener">Ouvrir dans App Builder ↗</a>
+          }
+          <button type="button" [class]="changed() ? 'btn-primary' : 'btn-secondary'" (click)="transmit()" [disabled]="sending()">
+            {{ sending() ? 'Envoi…' : 'Transmettre au projet' }}
+          </button>
+        </div>
+        @if (sent(); as t) {
+          <p class="pj-success" role="status">Ticket n° {{ t.number }} ouvert dans {{ t.repository }} — <a [href]="t.url" target="_blank" rel="noopener">le voir ↗</a></p>
+          @if (linkFailed()) {
+            <p class="pj-hint">Le lien avec la spécification n'a pas pu être mis à jour : ce bloc peut encore la dire modifiée.</p>
+          }
+        }
+        @if (sendError(); as e) {
+          <p class="pj-error" role="alert">{{ e.detail }}</p>
+          @if (e.blockers.length) { <ul class="pj-reasons">@for (b of e.blockers; track $index) { <li>{{ b }}</li> }</ul> }
+          @if (e.connectUrl) { <a class="btn-secondary" [href]="e.connectUrl" target="_blank" rel="noopener">Relier mon compte GitHub ↗</a> }
+        }
+      </div>
+    } @else if (o.missingId !== null) {
+      <div class="pj-card">
+        <h2>Spécification d'origine</h2>
+        <p class="pj-hint">Ce projet est né de la spécification n° {{ o.missingId }}, qui n'est plus dans vos spécifications App Builder.</p>
+      </div>
+    }
+  }
+}

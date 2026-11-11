@@ -14,8 +14,10 @@ donne un PostgreSQL jetable, le temps des tests.
     docker stop lab-admin-test-pg && docker network rm lab-admin-test-net
 
 lab-admin laisse entrer deux groupes (`admins`, `developers`) mais son backend
-n'a AUCUNE vue pour les non-admins : l'interface des développeurs parle au
-moteur (/mcp/api). Ces tests tiennent cette propriété.
+n'a qu'UNE vue pour les non-admins — `spec-links/<app>/` (chantier
+app-builder-v2, I8), qui ne rend que les lignes de l'appelant : l'interface des
+développeurs parle au moteur (/mcp/api). Ces tests tiennent cette propriété
+(``DefaultDenyTests`` pour l'inventaire, ``SpecLinkTests`` pour la vue ouverte).
 
 Les identités sont posées par ``force_authenticate`` sur un vrai
 ``KeycloakUser`` ; ``RealTokenGateTests`` repasse en plus par
@@ -38,6 +40,7 @@ from rest_framework.test import APIClient
 
 from . import lab_groups, urls as api_urls
 from .authentication import KeycloakJWTAuthentication, KeycloakUser
+from .models import SpecLink
 
 ADMINS = ['admins', 'developers']
 DEVELOPERS = ['developers']
@@ -53,7 +56,7 @@ def client_for(uid: str, groups: list[str]) -> APIClient:
 
 
 def _sample_path(pattern: URLPattern) -> str:
-    return '/api/' + str(pattern.pattern).replace('<int:pk>', '1')
+    return '/api/' + str(pattern.pattern).replace('<int:pk>', '1').replace('<str:app>', 'mon-app')
 
 
 # Plus aucune vue hors JWT : CatalogSyncView (secret partagé) est partie avec la page Debug.
@@ -73,7 +76,7 @@ class DefaultDenyTests(TestCase):
         checked = []
         for pattern in api_urls.urlpatterns:
             route = str(pattern.pattern)
-            if route in SHARED_SECRET:
+            if route in SHARED_SECRET or route in api_urls.MEMBER_ROUTES:
                 continue
             path = _sample_path(pattern)
             for method in ('get', 'post', 'put', 'patch', 'delete'):
@@ -82,7 +85,13 @@ class DefaultDenyTests(TestCase):
                     self.assertEqual(resp.status_code, 403, f'{method.upper()} {path}')
             checked.append(route)
         # L'inventaire couvre bien tout ce qui existait, et rien n'a été ouvert.
-        self.assertEqual(len(checked), len(api_urls.urlpatterns) - len(SHARED_SECRET))
+        self.assertEqual(len(checked), len(api_urls.urlpatterns) - len(SHARED_SECRET) - len(api_urls.MEMBER_ROUTES))
+        # Les routes ouvertes aux membres : EXACTEMENT celles-ci, chacune avec sa permission déclarée.
+        self.assertEqual(sorted(api_urls.MEMBER_ROUTES), ['spec-links/<str:app>/'])
+        from .permissions import IsLabMember
+        for pattern in api_urls.urlpatterns:
+            if str(pattern.pattern) in api_urls.MEMBER_ROUTES:
+                self.assertEqual(pattern.callback.view_class.permission_classes, [IsLabMember])
         # Routes retirées (sans appelant, ou passées au moteur) : elles ne doivent pas revenir.
         for gone in ('me/', 'users/', 'departments/', 'infrastructure/', 'debug/tests/', 'debug/run/',
                      'debug/jobs/1/', 'debug/catalog-sync/'):
@@ -359,3 +368,141 @@ class UserCreationPasswordTests(TestCase):
         self.assertFalse(data['email_sent'])
         self.assertEqual(data['password'], self._set_password())
         self.assertEqual(len(mail.outbox), 0)
+
+
+# ── I8 (chantier app-builder-v2) : lien projet ↔ spécification ────────────────
+
+FP_A = 'sha256:' + 'a' * 64
+FP_B = 'sha256:' + '0123456789abcdef' * 4
+
+
+class SpecLinkTests(TestCase):
+    """`/api/spec-links/<app>/` : ouverte à la porte (`admins`, `developers`), et
+    chacun n'y lit et n'y écrit que SES lignes (clé : l'email du jeton)."""
+
+    def setUp(self) -> None:
+        self.hassan = client_for('hassan', DEVELOPERS)
+        self.alice = client_for('alice', DEVELOPERS)
+        self.sacha = client_for('sacha', ADMINS)
+
+    def put(self, c: APIClient, app: str, body):
+        return c.put(f'/api/spec-links/{app}/', body, format='json')
+
+    def test_member_writes_then_reads_his_link(self):
+        resp = self.put(self.hassan, 'gestion-stock', {'spec_id': 12, 'fingerprint': FP_A})
+        self.assertEqual(resp.status_code, 201)
+        body = resp.json()
+        self.assertEqual({k: body[k] for k in ('app', 'spec_id', 'fingerprint')},
+                         {'app': 'gestion-stock', 'spec_id': 12, 'fingerprint': FP_A})
+        created_at = body['created_at']
+        got = self.hassan.get('/api/spec-links/gestion-stock/')
+        self.assertEqual(got.status_code, 200)
+        self.assertEqual(got.json(), body)
+        # Remplacement (après un envoi au projet) : 200, même ligne, date de création gardée.
+        again = self.put(self.hassan, 'gestion-stock', {'spec_id': 12, 'fingerprint': FP_B})
+        self.assertEqual(again.status_code, 200)
+        self.assertEqual(again.json()['fingerprint'], FP_B)
+        self.assertEqual(again.json()['created_at'], created_at)
+        self.assertEqual(SpecLink.objects.count(), 1)
+        # Empreinte vide (App Builder sans `fingerprint`) ou absente : acceptée, rien à comparer.
+        for body in ({'spec_id': 12, 'fingerprint': ''}, {'spec_id': 12}, {'spec_id': 12, 'fingerprint': None}):
+            with self.subTest(body=body):
+                resp = self.put(self.hassan, 'gestion-stock', body)
+                self.assertEqual(resp.status_code, 200)
+                self.assertEqual(resp.json()['fingerprint'], '')
+
+    def test_admin_is_a_member_too(self):
+        self.assertEqual(self.put(self.sacha, 'mon-app', {'spec_id': 3}).status_code, 201)
+        self.assertEqual(self.sacha.get('/api/spec-links/mon-app/').status_code, 200)
+
+    def test_no_link_is_404(self):
+        resp = self.hassan.get('/api/spec-links/gestion-stock/')
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.json()['error'], 'not_found')
+
+    def test_lines_of_others_are_invisible_and_untouchable(self):
+        self.assertEqual(self.put(self.hassan, 'gestion-stock', {'spec_id': 12, 'fingerprint': FP_A}).status_code, 201)
+        # Un autre membre, un admin : rien à lire.
+        for c in (self.alice, self.sacha):
+            self.assertEqual(c.get('/api/spec-links/gestion-stock/').status_code, 404)
+        # Écrire « le même » projet crée SA ligne, sans toucher à celle de hassan.
+        self.assertEqual(self.put(self.alice, 'gestion-stock', {'spec_id': 99, 'fingerprint': FP_B}).status_code, 201)
+        mine = self.hassan.get('/api/spec-links/gestion-stock/').json()
+        self.assertEqual((mine['spec_id'], mine['fingerprint']), (12, FP_A))
+        self.assertEqual(self.alice.get('/api/spec-links/gestion-stock/').json()['spec_id'], 99)
+        # Un champ `owner_email` dans le corps n'y change rien.
+        self.put(self.alice, 'autre-app', {'spec_id': 5, 'owner_email': 'hassan@ssolab.local'})
+        self.assertEqual(self.hassan.get('/api/spec-links/autre-app/').status_code, 404)
+        self.assertEqual(SpecLink.objects.filter(owner_email='hassan@ssolab.local').count(), 1)
+
+    def test_non_members_are_refused(self):
+        for c in (client_for('lea', ['famille']), client_for('ghost', [])):
+            for method in ('get', 'put'):
+                with self.subTest(method=method):
+                    resp = getattr(c, method)('/api/spec-links/gestion-stock/', {'spec_id': 1}, format='json')
+                    self.assertEqual(resp.status_code, 403)
+        # Un jeton sans email (porte franchie) n'écrit pas une ligne au nom de personne.
+        c = APIClient()
+        c.force_authenticate(user=KeycloakUser({'preferred_username': 'x', 'groups': DEVELOPERS, 'azp': 'lab-admin'}))
+        self.assertEqual(self.put(c, 'gestion-stock', {'spec_id': 1}).status_code, 403)
+        self.assertIn(APIClient().get('/api/spec-links/gestion-stock/').status_code, (401, 403))
+        self.assertEqual(SpecLink.objects.count(), 0)
+
+    def test_invalid_values_are_400(self):
+        bad_apps = ['Gestion', '1app', '-app', 'a' * 64, 'app_x', 'app%0A', 'app.x']
+        for app in bad_apps:
+            with self.subTest(app=app):
+                self.assertEqual(self.put(self.hassan, app, {'spec_id': 1}).status_code, 400)
+                self.assertEqual(self.hassan.get(f'/api/spec-links/{app}/').status_code, 400)
+        # Le plus long nom admis passe.
+        self.assertEqual(self.put(self.hassan, 'a' * 63, {'spec_id': 1}).status_code, 201)
+        bad_bodies = [
+            {}, {'spec_id': 0}, {'spec_id': -3}, {'spec_id': '12'}, {'spec_id': 1.5}, {'spec_id': True},
+            {'spec_id': None}, {'spec_id': 2 ** 31},
+            {'spec_id': 1, 'fingerprint': 'sha256:' + 'A' * 64},
+            {'spec_id': 1, 'fingerprint': 'sha256:' + 'a' * 63},
+            {'spec_id': 1, 'fingerprint': 'sha256:' + 'a' * 64 + '\n'},
+            {'spec_id': 1, 'fingerprint': 'md5:' + 'a' * 32},
+            {'spec_id': 1, 'fingerprint': 42},
+        ]
+        for body in bad_bodies:
+            with self.subTest(body=body):
+                resp = self.put(self.hassan, 'gestion-stock', body)
+                self.assertEqual(resp.status_code, 400)
+                self.assertEqual(resp.json()['error'], 'invalid')
+        self.assertEqual(self.hassan.put('/api/spec-links/gestion-stock/', '[1]', content_type='application/json').status_code, 400)
+        self.assertFalse(SpecLink.objects.filter(app='gestion-stock').exists())
+
+    def test_other_methods_are_refused(self):
+        for method in ('post', 'patch', 'delete'):
+            with self.subTest(method=method):
+                self.assertEqual(getattr(self.hassan, method)('/api/spec-links/gestion-stock/', {'spec_id': 1},
+                                                              format='json').status_code, 405)
+
+
+@override_settings(KEYCLOAK_REQUIRED_GROUPS='admins,developers', KEYCLOAK_CLIENT_ID='lab-admin')
+class SpecLinkRealTokenTests(TestCase):
+    """La même vue, derrière la vraie classe d'authentification."""
+
+    def setUp(self) -> None:
+        patcher = mock.patch.object(KeycloakJWTAuthentication, '_get_jwks_client',
+                                    classmethod(lambda cls: _LocalJwks()))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def call(self, method: str, tok: str, body=None):
+        return getattr(APIClient(), method)('/api/spec-links/gestion-stock/', body, format='json',
+                                            HTTP_AUTHORIZATION=f'Bearer {tok}')
+
+    def test_developer_token_reaches_his_link(self):
+        tok = token('hassan', ['developers'])
+        self.assertEqual(self.call('put', tok, {'spec_id': 12, 'fingerprint': FP_A}).status_code, 201)
+        self.assertEqual(self.call('get', tok).json()['spec_id'], 12)
+        self.assertEqual(SpecLink.objects.get().owner_email, 'hassan@ssolab.local')
+
+    def test_outsiders_and_foreign_clients_do_not(self):
+        self.assertEqual(self.call('get', token('lea', ['famille'])).status_code, 403)
+        for azp in ('admin-cli', 'app-builder'):
+            with self.subTest(azp=azp):
+                self.assertEqual(self.call('put', token('hassan', ['developers'], azp=azp), {'spec_id': 1}).status_code, 403)
+        self.assertEqual(SpecLink.objects.count(), 0)

@@ -71,6 +71,19 @@ commande est en tête de `backend/api/tests.py`, ou passer par `bash chantiers/t
 la liste des anciennes adresses redirigées (`/debug`). Relecture des affirmations du README contre
 `backend/config/urls.py`, `backend/Dockerfile`, `docker-compose.yml`, `backend/api/infra_info.py`.
 
+## Lot 5 — Passerelle avec App Builder   ·   statut : en cours
+**Objectif :** un projet né d'une spécification App Builder garde son lien avec elle : on voit ce qui sera remis avant de créer, on sait quand la spec a changé, et on peut le transmettre à l'agent du projet. Contrat : `chantiers/app-builder-v2/` (I7, I8) à la racine du lab.
+**Tâches :**
+- [x] `SpecLink` (table `spec_links`, migration `0005`) et `GET/PUT /api/spec-links/<app>/` (`IsLabMember` : porte `admins,developers`, lignes de l'appelant seulement)
+- [x] « Mes spécifications » : aperçu des lots et du cahier (texte, jamais HTML) avant la création ; lien enregistré après une création réussie ; lien « Connecter Claude Code / Vibe à App Builder »
+- [x] Page projet : bloc « Spécification d'origine », alerte quand l'empreinte a changé, « Transmettre au projet » par un ticket (`POST /projects/<app>/tickets`)
+- [ ] Ⓟ Mise en service et parcours en navigateur réel (`chantiers/app-builder-v2/rapports/D.md`, « Parcours navigateur ») ; un ticket réel sur un dépôt créé par le moteur
+**Tests à passer avant de clore le lot :**
+- [x] `python manage.py test api.tests.SpecLinkTests api.tests.DefaultDenyTests` (membre accepté, ligne d'autrui invisible et intouchable, non-membre refusé, valeurs invalides 400, inventaire des routes ouvertes)
+- [x] `npm run test:engine` (`spec-link.client.spec.ts` : ticket ≤ 60 000 même avec un cahier de 200 000 caractères, aucune ligne `#` de la spec hors bloc, ni jeton ni historique)
+- [x] `npx ng build` sans erreur
+**Vérifié le :** 2026-11-11 — tests backend sur PostgreSQL jetable : 29 OK ; `npm run test:engine` : 62/62 ; `npx ng build` sans erreur ; image du commit `e6b8505` construite pendant que l'ancienne tournait, `scripts/app-test.sh lab-admin` : 29 OK. **Non mis en service** (refusé à l'agent de nuit, à faire par le propriétaire).
+
 ## Mise en service — chantier « failles » (2026-11-01)
 Les mentions « non déployé » ci-dessus datent d'avant cette mise en service. Image construite pendant
 que l'ancienne tournait, `scripts/app-test.sh` : 20 tests OK, puis `up -d --no-build` ; ports
