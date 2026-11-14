@@ -45,7 +45,7 @@
             {{ wsLabel('chat-vibe', 'Mistral Vibe') }}
           </button>
           @if (p.workspace.open) {
-            <button type="button" class="pj-danger" (click)="closeWorkspace()" [disabled]="wsBusy()">Fermer l'éditeur</button>
+            <button type="button" class="pj-danger" (click)="closeWorkspace()" [disabled]="wsBusy()">Fermer l'espace</button>
           }
         </div>
         @if (wsOpened(); as w) {

@@ -42,7 +42,7 @@
               @for (d of devs(); track d.uid) {
                 @if (d.uid !== self()?.uid) {
                   <option [value]="d.uid" [selected]="shown()?.viewed_as === d.uid">
-                    {{ d.uid }} — {{ d.projects }} projet(s){{ d.workspace.open ? ', éditeur ouvert' : '' }}
+                    {{ d.uid }} — {{ d.projects }} projet(s){{ d.workspace.open ? ', espace ouvert' : '' }}
                   </option>
                 }
               }
@@ -213,7 +213,7 @@
                       <span [class]="'pj-badge ' + toneClass(gap(p.github).tone)"
                             [title]="p.github?.checked_at ? 'vérifié le ' + (p.github?.checked_at | date: dateFormat) : ''">{{ gap(p.github).label }}</span>
                     </span>
-                    @if (p.workspace.open) { <span class="pj-badge">éditeur ouvert</span> }
+                    @if (p.workspace.open) { <span class="pj-badge">espace ouvert</span> }
                   </span>
                   <span class="pj-meta">
                     @if (p.tests?.cloisonnement; as t) {
