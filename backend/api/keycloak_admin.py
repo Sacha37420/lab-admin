@@ -73,7 +73,8 @@ def _token() -> str:
             timeout=_TIMEOUT,
         )
     except requests.RequestException as exc:
-        raise KeycloakAdminError(f"Keycloak injoignable : {exc}") from exc
+        # Message fixe : le texte d'une exception `requests` porte l'URL demandée.
+        raise KeycloakAdminError(f"Keycloak injoignable ({type(exc).__name__}).") from exc
     if resp.status_code != 200:
         raise KeycloakAdminError(
             f"Auth service account échouée (HTTP {resp.status_code}) : {resp.text[:200]}"
@@ -92,7 +93,7 @@ def _req(method: str, path: str, **kwargs) -> requests.Response:
     try:
         resp = requests.request(method, url, headers=headers, timeout=_TIMEOUT, **kwargs)
     except requests.RequestException as exc:
-        raise KeycloakAdminError(f"Appel Keycloak échoué ({method} {path}) : {exc}") from exc
+        raise KeycloakAdminError(f"Appel Keycloak échoué ({method} {path}) : {type(exc).__name__}.") from exc
     if resp.status_code >= 400:
         raise KeycloakAdminError(
             f"Keycloak {method} {path} → HTTP {resp.status_code} : {resp.text[:300]}"

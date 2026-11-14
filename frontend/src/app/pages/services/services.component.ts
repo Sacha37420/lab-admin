@@ -2,7 +2,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { EngineService } from '../../core/engine.service';
 import { KeycloakService } from '../../core/keycloak.service';
-import { Me, Profile, profileOf } from '../../core/engine.client';
+import { EngineError, Me, Profile, profileOf, toEngineError } from '../../core/engine.client';
 import { RouterLink } from '@angular/router';
 import { apiUrl, labEnv } from '../../core/env';
 import { MaBaseComponent } from '../../shared/ma-base/ma-base.component';
@@ -36,6 +36,8 @@ export class ServicesComponent implements OnInit {
   private http = inject(HttpClient);
 
   me = signal<Me | null>(null);
+  /** Le moteur n'a pas répondu : les cartes de développeur manquent, on dit pourquoi. */
+  engineDown = signal<EngineError | null>(null);
   profile = signal<Profile | null>(null);
   tools = signal<Tool[]>([]);
   tunnel = signal<Tunnel | null>(null);
@@ -55,7 +57,7 @@ export class ServicesComponent implements OnInit {
     // Sans réponse du moteur : seules les cartes qui dépendent de lui manquent.
     this.engine.me().subscribe({
       next: me => { this.me.set(me); this.profile.set(profileOf(me, this.kc.isAdmin)); },
-      error: () => this.me.set(null),
+      error: err => { this.me.set(null); this.engineDown.set(toEngineError(err)); },
     });
     if (this.kc.isAdmin) {
       this.http.get<{ tools: Tool[]; tunnel?: Tunnel }>(`${apiUrl()}/api/tools/`).subscribe({

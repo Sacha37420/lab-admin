@@ -506,3 +506,41 @@ class SpecLinkRealTokenTests(TestCase):
             with self.subTest(azp=azp):
                 self.assertEqual(self.call('put', token('hassan', ['developers'], azp=azp), {'spec_id': 1}).status_code, 403)
         self.assertEqual(SpecLink.objects.count(), 0)
+
+
+# ── Une exception `requests` porte l'URL demandée : jamais dans un message rendu ──
+
+@override_settings(KEYCLOAK_ISSUER_URI='http://keycloak:8080/realms/ssolab',
+                   KEYCLOAK_ADMIN_BASE_URL='http://keycloak:8080',
+                   KEYCLOAK_ADMIN_CLIENT_ID='lab-admin-admin',
+                   KEYCLOAK_ADMIN_CLIENT_SECRET='secret-de-test')
+class KeycloakAdminErrorMessageTests(TestCase):
+    """`KeycloakAdminError` est rendue telle quelle à la page (`{'error': str(exc)}`) :
+    son texte ne doit pas reprendre celui de l'exception `requests`, qui contient l'URL."""
+
+    URL = 'http://keycloak:8080/admin/realms/ssolab/users?email=marqueur-url'
+
+    def setUp(self) -> None:
+        from . import keycloak_admin
+        self.kc = keycloak_admin
+        p = mock.patch.dict(keycloak_admin._token_cache, {'value': '', 'exp': 0.0})
+        p.start()
+        self.addCleanup(p.stop)
+
+    def _unreachable(self):
+        return self.kc.requests.ConnectionError(f'Max retries exceeded with url: {self.URL}')
+
+    def test_token_error_does_not_carry_the_url(self):
+        with mock.patch.object(self.kc.requests, 'post', side_effect=self._unreachable()):
+            with self.assertRaises(self.kc.KeycloakAdminError) as ctx:
+                self.kc._token()
+        self.assertIn('Keycloak injoignable', str(ctx.exception))
+        self.assertNotIn('marqueur-url', str(ctx.exception))
+
+    def test_admin_call_error_does_not_carry_the_url(self):
+        with mock.patch.object(self.kc, '_token', return_value='jeton'), \
+                mock.patch.object(self.kc.requests, 'request', side_effect=self._unreachable()):
+            with self.assertRaises(self.kc.KeycloakAdminError) as ctx:
+                self.kc.all_groups()
+        self.assertIn('Appel Keycloak échoué', str(ctx.exception))
+        self.assertNotIn('marqueur-url', str(ctx.exception))

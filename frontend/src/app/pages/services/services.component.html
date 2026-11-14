@@ -42,6 +42,10 @@
       </div>
     </div>
 
+    @if (engineDown(); as e) {
+      <p class="pj-error" role="alert">Une partie des services (base, email, assistants) n'a pas pu être chargée : {{ e.detail }}</p>
+    }
+
     <!-- ── Développeur pas encore initialisé : dire où cela se fait ───────── -->
     @if (needsInit()) {
       <div class="env-card">
