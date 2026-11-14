@@ -40,6 +40,7 @@ export class AppComponent {
     { path: '/projets',             label: 'Projets',            abbr: 'Pr' },
     // Administration (adminGuard sur chaque route).
     { path: '/nouvel-utilisateur',  label: 'Nouvel utilisateur', abbr: 'Nu', adminOnly: true },
+    { path: '/modules',             label: 'Modules',            abbr: 'Mo', adminOnly: true },
   ];
 
   /** Un non-admin ne voit aucun lien vers une page qui le refuserait. */

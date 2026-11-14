@@ -85,6 +85,19 @@ la liste des anciennes adresses redirigées (`/debug`). Relecture des affirmatio
 - [x] `npx ng build` sans erreur
 **Vérifié le :** 2026-11-11 — tests backend sur PostgreSQL jetable : 29 OK ; `npm run test:engine` : 62/62 ; `npx ng build` sans erreur ; image du commit `e6b8505` construite pendant que l'ancienne tournait, `scripts/app-test.sh lab-admin` : 29 OK. **Mis en service le 2026-11-11** (fusion `dabd8ba`, même image) ; cloisonnement `lab-runner` 3/3 ; `/api/spec-links/…` sans jeton → 403.
 
+## Lot 6 — Page « Modules » : installer ou réinstaller un module   ·   statut : en cours
+**Objectif :** depuis lab-admin, le superutilisateur voit les modules du lab (état, dépendances, réglages, source de la description), vérifie un module, et installe ou réinstalle un ou plusieurs modules avec leurs dépendances, plan affiché avant toute confirmation. Contrat : `chantiers/modules/CONTRAT.md` v1 (I4) à la racine du lab ; aucune vue backend (D8).
+**Tâches :**
+- [x] `core/engine.client.ts` : types et méthodes des quatre routes d'I4 (`GET /modules`, `GET /modules/{name}[?check=1]`, `POST /modules/plan`, `POST /modules/install`), lecture tolérante (`toModuleList`, `toModuleDetail`, `toModulePlan`, `modulesResult`) qui ne reprend jamais une valeur de réglage ; job `kind: "modules"`
+- [x] Page `/modules` (`adminGuard`, lien de navigation réservé aux admins) : liste triable et filtrable, détail, « Vérifier », sélection, options « Réinstaller » et « Avec ses dépendances », plan, réglages manquants (champ masqué pour un secret), confirmation, suivi du job (`shared/job-suivi`, résultat par module et pas sautés) ; refus `forbidden` affiché pour un admin qui n'est pas superutilisateur
+- [x] Réglages saisis : envoyés une seule fois dans `POST /modules/install`, effacés à l'envoi, au changement de plan et à la fermeture de la page ; jamais dans le stockage du navigateur
+- [ ] Mise en service (après celle du moteur qui sert I4), puis parcours en navigateur réel : installer un petit module, relancer son installation, clair et sombre, 375 px
+**Tests à passer avant de clore le lot :**
+- [x] `npm run test:engine` : routes d'I4 (méthode, chemin, corps, paramètre `check`), formes d'I2 tolérées, aucune valeur de réglage reprise, plan bloqué jamais installable, corps d'install (seules les valeurs saisies des clés demandées), résultat du job par module, erreurs `forbidden`, `invalid` avec `reasons`, `job_exists`, `not_found` ; tri et filtres (`core/modules.view.spec.ts`)
+- [x] `npx ng build` sans erreur ; aucune couleur en dur dans `pages/modules/`
+- [ ] Parcours navigateur réel (superutilisateur) ; admin non superutilisateur : message « Réservé au superutilisateur »
+**Vérifié le :** 2026-11-14 — non déployé. `npm run test:engine` : 74/74 (62 + 12) ; `npx ng build` sans erreur (node:20-alpine, réseau coupé) ; `grep` hex/`rgb(` dans `pages/modules/` : rien.
+
 ## Mise en service — chantier « failles » (2026-11-01)
 Les mentions « non déployé » ci-dessus datent d'avant cette mise en service. Image construite pendant
 que l'ancienne tournait, `scripts/app-test.sh` : 20 tests OK, puis `up -d --no-build` ; ports

@@ -52,6 +52,14 @@ export const routes: Routes = [
     canActivate: [adminGuard],
   },
   {
+    // Chantier « modules » (I4) : la garde est `adminGuard` ; le moteur ne répond qu'au
+    // SUPERUTILISATEUR (D8) et la page affiche son refus aux autres admins.
+    path: 'modules',
+    loadComponent: () =>
+      import('./pages/modules/modules.component').then(m => m.ModulesComponent),
+    canActivate: [adminGuard],
+  },
+  {
     path: 'forbidden',
     loadComponent: () =>
       import('./pages/forbidden/forbidden.component').then(m => m.ForbiddenComponent),

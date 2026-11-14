@@ -15,6 +15,9 @@ import {
   toEngineError, cloisonnementLabel, envRows, runAllSummary, projectSections, smtpIsStale, smtpBody, smtpProblems, SMTP_DEFAULT_PORT, githubGapLabel, projectCounts, Project, ENV_KEY_RE, APP_NAME_RE, isPgadminUrl, isWorkspaceUrl, isWorkspaceTargetUrl, WORKSPACE_TARGET_TEXT, stateLabel, verdictLabel,
   toPreview, previewOtherApp, previewShowsThis, previewStateLabel, previewServiceTone, previewUnavailable,
   previewErrorText, isPreviewUrl, PREVIEW_UNAVAILABLE_TEXT,
+  toModuleList, toModuleItem, toModuleSetting, toModuleDetail, toModulePlan, modulesResult, testsAllResults,
+  moduleInstallBody, moduleSettingsProblems, moduleStateLabel, moduleCategoryLabel, moduleSourceLabel,
+  moduleActionLabel, moduleResourcesLabel, modulesErrorText, MODULE_NAME_RE,
 } from './engine.client';
 
 function recorder(reply: (req: EngineRequest) => Observable<unknown> = () => of({})) {
@@ -609,4 +612,221 @@ test('essai I2 v2 : `500 failed` et `503 unavailable` sur la lecture', () => {
   const absent = toEngineError({ status: 503, error: { error: 'unavailable', detail: 'app-preview.sh est absent.' } });
   assert.equal(previewUnavailable(absent), 'no_domain');
   assert.doesNotMatch(PREVIEW_UNAVAILABLE_TEXT.no_domain, /^Pas d'adresse d'essai sur ce lab : il n'a pas de nom de domaine\.$/);
+});
+
+// ── Modules (chantier « modules », contrat v1, I4) ────────────────────────────
+// Réponses recopiées des formes réelles d'I2 (`lab-modules.sh list|show|plan --json`).
+
+const MOD_PERIPH = {
+  name: 'peripheriques', label: 'Périphériques', description: 'Caméra et micro de l\'hôte.',
+  category: 'application', required: false, owner: 'sacha', path: 'deploiement/peripheriques',
+  source: 'catalogue', valid: true, errors: [], state: 'installed', containers: { running: 2, total: 2 },
+  no_autodeploy: false, selected: true, priority: 50, provides: { interface: null },
+  requires: { modules: [{ name: 'lab-media', interface: '1' }], system: [{ command: 'ffmpeg', min_version: '6.0', why: 'capture' }], domain: false },
+  resources: { build_ram_mb: 1500, disk_mb: null, build_minutes: null, heavy_build: false },
+  settings: [{ key: 'PERIPHERIQUES_BRIDGE_KEY', question: 'Clé du pont…', required: false, secret: true, set: true }],
+  groups: ['developers', 'admins'], install: null,
+  deployed: { sha: '2080f194c78d02bfbf5842a723873a967439797b', at: '2026-11-01T22:35:06+01:00' },
+};
+const MOD_LIST = {
+  schema: 1,
+  selection: { memorized: true, modules: ['peripheriques'], updated_at: '2026-11-14T10:00:00+01:00', by: 'sacha' },
+  modules: [
+    { ...MOD_PERIPH, name: 'sso-lab', label: 'sso-lab', category: 'socle', required: true, requires: { modules: [], system: [], domain: false }, settings: [] },
+    { ...MOD_PERIPH, name: 'lab-media', label: 'Flux', category: 'cadriciel', requires: { modules: [], system: [], domain: false }, settings: [], provides: { interface: '1' } },
+    MOD_PERIPH,
+  ],
+  job: null,
+};
+const PLAN = {
+  ok: true, requested: ['craft-lab'], reinstall: true, with_deps: true,
+  steps: [
+    { module: 'storage', action: 'reinstall', reason: 'dépendance de craft-lab', hook: false,
+      resources: { build_ram_mb: 1500, disk_mb: null, build_minutes: null, heavy_build: false }, settings: [] },
+    { module: 'craft-lab', action: 'reinstall', reason: 'demandé', hook: true,
+      resources: { build_ram_mb: 1500, disk_mb: null, build_minutes: 6, heavy_build: false },
+      settings: [{ key: 'CRAFT_KEY', question: 'Clé ?', required: true, secret: true, set: false }] },
+  ],
+  blocked: [],
+  settings_missing: [
+    { module: 'craft-lab', key: 'CRAFT_KEY', question: 'Clé ?', required: true, secret: true },
+    { module: 'craft-lab', key: 'CRAFT_NOTE', question: 'Note', required: false, secret: false },
+  ],
+  warnings: ['storage tourne déjà : il sera reconstruit'],
+};
+
+test('modules I4 : les quatre routes — méthode, chemin, corps, paramètres', async () => {
+  const { client, calls } = recorder();
+  const run = async (o: Observable<unknown>) => { await firstValueFrom(o); return calls.pop(); };
+  assert.deepEqual(await run(client.modules()), { method: 'GET', path: '/modules' });
+  assert.deepEqual(await run(client.module('peripheriques')), { method: 'GET', path: '/modules/peripheriques' });
+  assert.deepEqual(await run(client.module('peripheriques', true)), { method: 'GET', path: '/modules/peripheriques', params: { check: '1' } });
+  assert.deepEqual(await run(client.modulePlan({ modules: ['craft-lab', 'craft-lab', 'peripheriques'], reinstall: true, with_deps: false })),
+    { method: 'POST', path: '/modules/plan', body: { modules: ['craft-lab', 'peripheriques'], reinstall: true, with_deps: false } });
+  assert.deepEqual(await run(client.moduleInstall({ modules: ['craft-lab'], reinstall: false, with_deps: true })),
+    { method: 'POST', path: '/modules/install', body: { modules: ['craft-lab'], reinstall: false, with_deps: true } });
+  assert.deepEqual(await run(client.moduleInstall({ modules: ['craft-lab'], reinstall: false, with_deps: true, settings: { 'craft-lab': { CRAFT_KEY: 's3cr3t' } } })),
+    { method: 'POST', path: '/modules/install', body: { modules: ['craft-lab'], reinstall: false, with_deps: true, settings: { 'craft-lab': { CRAFT_KEY: 's3cr3t' } } } });
+  // `settings` vide : la clé ne part pas. Booléens stricts même si l'appelant passe autre chose.
+  assert.deepEqual((await run(client.moduleInstall({ modules: ['a'], reinstall: 1 as unknown as boolean, with_deps: false, settings: {} })))?.body,
+    { modules: ['a'], reinstall: false, with_deps: false });
+  // Un nom piégé ne change pas de route.
+  assert.equal((await run(client.module('../projects')))?.path, '/modules/..%2Fprojects');
+  assert.equal((await run(client.module('x?check=1')))?.path, '/modules/x%3Fcheck%3D1');
+  assert.equal(calls.length, 0);
+});
+
+test('modules I4 : liste — formes d\'I2 reprises, `job`, et jamais une valeur de réglage', () => {
+  const l = toModuleList({ ...MOD_LIST, job: 'abc123' });
+  assert.equal(l.job, 'abc123');
+  assert.deepEqual(l.selection, { memorized: true, modules: ['peripheriques'], updated_at: '2026-11-14T10:00:00+01:00', by: 'sacha' });
+  assert.deepEqual(l.modules.map(m => m.name), ['sso-lab', 'lab-media', 'peripheriques']);
+  const p = l.modules[2];
+  assert.deepEqual(p.requires.modules, [{ name: 'lab-media', interface: '1' }]);
+  assert.deepEqual(p.requires.system, [{ command: 'ffmpeg', min_version: '6.0', why: 'capture' }]);
+  assert.deepEqual(p.containers, { running: 2, total: 2 });
+  assert.equal(p.deployed?.sha, '2080f194c78d02bfbf5842a723873a967439797b');
+  assert.equal(toModuleList(MOD_LIST).job, null);
+  // Un moteur qui laisserait passer une valeur : elle n'atteint pas l'état de la page.
+  const leaky = toModuleItem({ ...MOD_PERIPH, settings: [{ key: 'K', question: 'q', required: true, secret: true, set: true, value: 'FUITE', default: 'FUITE' }] });
+  assert.deepEqual(leaky?.settings, [{ key: 'K', question: 'q', required: true, secret: true, set: true }]);
+  assert.ok(!JSON.stringify(leaky).includes('FUITE'));
+});
+
+test('modules I4 : champs absents tolérés, élément sans nom rejeté', () => {
+  const bare = toModuleItem({ name: 'x' });
+  assert.ok(bare);
+  assert.deepEqual([bare!.label, bare!.category, bare!.state, bare!.valid, bare!.install, bare!.deployed, bare!.priority],
+    ['x', 'application', 'unknown', true, null, null, null]);
+  assert.deepEqual(bare!.resources, { build_ram_mb: null, disk_mb: null, build_minutes: null, heavy_build: false });
+  assert.deepEqual(bare!.containers, { running: 0, total: 0 });
+  assert.equal(toModuleItem({ label: 'sans nom' }), null);
+  assert.equal(toModuleItem(null), null);
+  const l = toModuleList({ modules: [{ name: 'a' }, 7, { label: 'b' }] });
+  assert.deepEqual(l.modules.map(m => m.name), ['a']);
+  assert.deepEqual(l.selection, { memorized: false, modules: [], updated_at: null, by: null });
+  assert.deepEqual(toModuleList('<html>').modules, []);
+  // Réglage sans `secret` : traité comme secret (champ masqué), jamais l'inverse.
+  assert.equal(toModuleSetting({ key: 'K' })?.secret, true);
+  // Description invalide : état et raisons.
+  const inv = toModuleItem({ name: 'y', valid: false, state: 'invalid', errors: ['clé inconnue : « foo »', 3] });
+  assert.deepEqual([inv!.valid, inv!.state, inv!.errors], [false, 'invalid', ['clé inconnue : « foo »']]);
+  assert.deepEqual(moduleStateLabel('invalid'), { label: 'description invalide', tone: 'ko' });
+});
+
+test('modules I4 : détail avec `?check=1` — vérifications et sortie du script', () => {
+  const d = toModuleDetail({ ...MOD_PERIPH, ok: false, checks: [
+    { what: 'system:ffmpeg', ok: false, detail: 'ffmpeg absent' },
+    { what: 'hook', ok: null, detail: 'aucun script', output: [] },
+    { what: 'hook', ok: true, detail: 'script --check', output: ['ligne 1', 'ligne 2'] },
+    { ok: true },
+  ] });
+  assert.equal(d?.ok, false);
+  assert.deepEqual(d?.checks?.map(c => [c.what, c.ok]), [['system:ffmpeg', false], ['hook', null], ['hook', true]]);
+  assert.deepEqual(d?.checks?.[2].output, ['ligne 1', 'ligne 2']);
+  // Sans `--check` : ni checks ni ok.
+  const plain = toModuleDetail(MOD_PERIPH);
+  assert.deepEqual([plain?.checks, plain?.ok], [null, null]);
+  // Sortie tronquée à 200 lignes (I2).
+  const long = toModuleDetail({ name: 'z', checks: [{ what: 'hook', ok: true, detail: '', output: Array.from({ length: 300 }, (_, i) => `l${i}`) }] });
+  assert.equal(long?.checks?.[0].output.length, 200);
+});
+
+test('modules I4 : plan — pas, bloqués, réglages manquants, avertissements', () => {
+  const p = toModulePlan(PLAN);
+  assert.equal(p.ok, true);
+  assert.deepEqual(p.steps.map(s => [s.module, s.action, s.hook]), [['storage', 'reinstall', false], ['craft-lab', 'reinstall', true]]);
+  assert.equal(p.steps[1].resources.build_minutes, 6);
+  assert.deepEqual(p.settings_missing.map(m => [m.key, m.required]), [['CRAFT_KEY', true], ['CRAFT_NOTE', false]]);
+  assert.deepEqual(p.warnings, ['storage tourne déjà : il sera reconstruit']);
+
+  const blocked = toModulePlan({ ok: false, requested: ['sso-lab', 'lab-mcp'], reinstall: true, with_deps: false, steps: [],
+    blocked: [{ module: 'sso-lab', cause: 'socle', reason: 'sso-lab fait partie du socle : il s\'installe par scripts/install.sh, jamais ici' },
+              { module: 'lab-mcp', cause: 'engine_self', reason: 'le moteur ne se redéploie pas lui-même' }],
+    settings_missing: [], warnings: [] });
+  assert.equal(blocked.ok, false);
+  assert.deepEqual(blocked.blocked.map(b => b.cause), ['socle', 'engine_self']);
+  // Plan abîmé : jamais présenté comme installable.
+  assert.equal(toModulePlan({ steps: [] }).ok, false);
+  assert.equal(toModulePlan(null).ok, false);
+  assert.equal(toModulePlan({ ok: 'true' }).ok, false);
+});
+
+test('modules I4 : corps d\'install — seules les valeurs saisies des clés demandées partent', () => {
+  const p = toModulePlan(PLAN);
+  const req = { modules: ['craft-lab'], reinstall: true, with_deps: true };
+  assert.deepEqual(moduleInstallBody(req, p.settings_missing, {}), { modules: ['craft-lab'], reinstall: true, with_deps: true });
+  assert.deepEqual(moduleInstallBody(req, p.settings_missing, { 'craft-lab': { CRAFT_KEY: 'v', CRAFT_NOTE: '', AUTRE: 'jetée' }, autre: { X: 'jetée' } }),
+    { modules: ['craft-lab'], reinstall: true, with_deps: true, settings: { 'craft-lab': { CRAFT_KEY: 'v' } } });
+  // La valeur n'est ni rognée ni transformée.
+  assert.equal(moduleInstallBody(req, p.settings_missing, { 'craft-lab': { CRAFT_KEY: ' a b ' } }).settings?.['craft-lab']['CRAFT_KEY'], ' a b ');
+  // Contrôle de saisie : requis, longueur, retour à la ligne.
+  assert.deepEqual(moduleSettingsProblems(p.settings_missing, {}), ['craft-lab : CRAFT_KEY est requis.']);
+  assert.deepEqual(moduleSettingsProblems(p.settings_missing, { 'craft-lab': { CRAFT_KEY: 'x'.repeat(4097), CRAFT_NOTE: 'a\nb' } }),
+    ['craft-lab : CRAFT_KEY dépasse 4096 caractères.', 'craft-lab : CRAFT_NOTE ne doit pas contenir de retour à la ligne.']);
+  assert.deepEqual(moduleSettingsProblems(p.settings_missing, { 'craft-lab': { CRAFT_KEY: 'x'.repeat(4096) } }), []);
+});
+
+test('modules I4 : ticket d\'install, puis résultat du job par module', async () => {
+  const ticket = { job_id: 'f00dfeedc0ffee00', kind: 'modules', app: '', state: 'queued', jobs_ahead: 0, plan: PLAN };
+  const a = recorder(() => of(ticket));
+  const got = await firstValueFrom(a.client.moduleInstall({ modules: ['craft-lab'], reinstall: true, with_deps: true }));
+  assert.deepEqual([got.job_id, got.kind, got.app, got.state], ['f00dfeedc0ffee00', 'modules', '', 'queued']);
+  assert.equal(toModulePlan(got.plan).steps.length, 2);
+
+  const done = job({ kind: 'modules', app: '', state: 'failed', terminal: true, step: 'module_lab_media', result: {
+    ok: false, step: 'lab-media', error: 'lab-media : échec du déploiement',
+    results: [{ module: 'lab-media', action: 'install', ok: false, step: 'setup', sha: null, error: 'échec du build' },
+              { module: 'storage', action: 'keep', ok: true, step: 'done', sha: 'a760bfe0e6d0fba13ae47e836ecceaab601fa409' }],
+    skipped: [{ module: 'peripheriques', reason: 'dépend de lab-media, en échec' }] } });
+  const d = recorder(() => of(done));
+  const last = await lastValueFrom(d.client.watchJob('f00dfeedc0ffee00', 1));
+  const r = modulesResult(last);
+  assert.equal(r?.ok, false);
+  assert.equal(r?.error, 'lab-media : échec du déploiement');
+  assert.deepEqual(r?.results.map(x => [x.module, x.ok, x.error]), [['lab-media', false, 'échec du build'], ['storage', true, null]]);
+  assert.deepEqual(r?.skipped, [{ module: 'peripheriques', reason: 'dépend de lab-media, en échec' }]);
+  // Les `results` d'un job modules ne sont jamais lus comme ceux d'un « Tout tester ».
+  assert.equal(testsAllResults(last), null);
+  assert.equal(modulesResult(job({ kind: 'tests_all', result: { ok: true, results: [] } })), null);
+  assert.deepEqual(testsAllResults(job({ kind: 'tests_all', result: { ok: true, results: [{ app: 'a', verdict: 'ok' }] } })), [{ app: 'a', verdict: 'ok' }]);
+  // Réussite.
+  const ok = modulesResult(job({ kind: 'modules', state: 'succeeded', terminal: true, result: { ok: true, step: 'done', results: [], skipped: [] } }));
+  assert.deepEqual([ok?.ok, ok?.step, ok?.error], [true, 'done', null]);
+});
+
+test('modules I4 : erreurs — forbidden, invalid avec reasons, job_exists, not_found', () => {
+  const fb = toEngineError({ status: 403, error: { error: 'forbidden', detail: 'Réservé au superutilisateur.' } });
+  assert.equal(fb.code, 'forbidden');
+  assert.match(modulesErrorText(fb, 'list'), /superutilisateur/);
+
+  const inv = toEngineError({ status: 400, error: { error: 'invalid', detail: 'Installation refusée.',
+    reasons: ['craft-lab : CRAFT_KEY requis', 'sso-lab fait partie du socle : il s\'installe par scripts/install.sh, jamais ici'] } });
+  assert.equal(inv.code, 'invalid');
+  assert.deepEqual(inv.reasons, ['craft-lab : CRAFT_KEY requis', 'sso-lab fait partie du socle : il s\'installe par scripts/install.sh, jamais ici']);
+  assert.equal(modulesErrorText(inv), 'Installation refusée.');
+
+  const ex = toEngineError({ status: 409, error: { error: 'job_exists', detail: 'Une installation de modules est déjà en cours.', job_id: 'f00dfeedc0ffee00' } });
+  assert.deepEqual([ex.code, ex.jobId], ['job_exists', 'f00dfeedc0ffee00']);
+
+  const nf = toEngineError({ status: 404, error: { error: 'not_found', detail: 'module « nope » inconnu du lab' } });
+  assert.equal(modulesErrorText(nf), 'module « nope » inconnu du lab');
+  // Sur la LISTE, un 404 dit que le moteur en service ne connaît pas encore ces routes.
+  assert.match(modulesErrorText(nf, 'list'), /pas encore/);
+  assert.match(modulesErrorText(toEngineError({ status: 404, error: '<html>' }), 'list'), /pas encore/);
+  assert.equal(toEngineError({ status: 0 }).code, 'no_engine');
+  assert.doesNotMatch(modulesErrorText(toEngineError({ status: 0 }), 'list'), /pas encore/);
+});
+
+test('modules : libellés tolérants', () => {
+  assert.deepEqual(['installed', 'stopped', 'not_installed', 'inaccessible', 'absent', 'invalid'].map(s => moduleStateLabel(s).label),
+    ['installé', 'arrêté', 'non installé', 'inaccessible', 'absent', 'description invalide']);
+  assert.deepEqual(moduleStateLabel('futur'), { label: 'futur', tone: 'warn' });
+  assert.equal(moduleCategoryLabel('socle'), 'Socle');
+  assert.equal(moduleCategoryLabel('autre'), 'autre');
+  assert.match(moduleSourceLabel('module'), /lab-module\.json/);
+  assert.equal(moduleActionLabel('keep'), 'inchangé');
+  assert.equal(moduleResourcesLabel({ build_ram_mb: null, disk_mb: null, build_minutes: null, heavy_build: false }), '—');
+  assert.match(moduleResourcesLabel({ build_ram_mb: 4000, disk_mb: null, build_minutes: 6, heavy_build: true }), /Mo de mémoire · ≈ 6 min · build lourd$/);
+  assert.ok(MODULE_NAME_RE.test('traitement-de-fichiers-compils') && !MODULE_NAME_RE.test('-x') && !MODULE_NAME_RE.test('A'));
 });

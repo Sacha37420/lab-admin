@@ -3,10 +3,11 @@ import { Subscription } from 'rxjs';
 import { EngineService } from '../../core/engine.service';
 import { shortSha } from '../../core/format';
 import {
-  DeployTests, EngineError, Job, JobTestCase, cloisonnementLabel, deployVerdicts, runAllSummary, testCases, toEngineError, verdictLabel,
+  DeployTests, EngineError, Job, JobTestCase, ModulesResult, TestsAllRow, cloisonnementLabel, deployVerdicts, moduleActionLabel,
+  modulesResult, runAllSummary, testCases, testsAllResults, toEngineError, verdictLabel,
 } from '../../core/engine.client';
 
-const KIND_LABELS: Record<Job['kind'], string> = { create: 'Création', deploy: 'Déploiement', tests: 'Tests', tests_all: 'Test de tous les projets', preview: 'Essai' };
+const KIND_LABELS: Record<Job['kind'], string> = { create: 'Création', deploy: 'Déploiement', tests: 'Tests', tests_all: 'Test de tous les projets', preview: 'Essai', modules: 'Installation de modules' };
 const STATE_LABELS: Record<Job['state'], string> = {
   queued: 'en file d\'attente', running: 'en cours', succeeded: 'réussi', failed: 'échoué',
 };
@@ -58,7 +59,7 @@ const STATE_LABELS: Record<Job['state'], string> = {
               }
             </ul>
           }
-          @if (r.results; as results) {
+          @if (allResults(j); as results) {
             <!-- « Tout tester » : un verdict par app. Aucun test trouvé n'est pas un succès. -->
             @if (results.length === 0) {
               <p class="pj-error">Aucun projet n'a été testé : ce n'est pas un succès.</p>
@@ -80,6 +81,31 @@ const STATE_LABELS: Record<Job['state'], string> = {
                     </div>
                     <span [class]="'pj-badge ' + tone(res.verdict)">{{ cloisonnement(res.verdict) }}</span>
                   </li>
+                }
+              </ul>
+            }
+          }
+          @if (modules(j); as mr) {
+            <!-- Job « modules » (I4) : un résultat par pas, puis les pas sautés. -->
+            @if (mr.results.length) {
+              <ul class="pj-list" data-testid="modules-results">
+                @for (res of mr.results; track res.module) {
+                  <li>
+                    <div class="pj-item-main">
+                      <span class="pj-item-name">{{ res.module }} <span class="pj-hint">— {{ action(res.action) }}</span></span>
+                      @if (res.error) { <span class="pj-error">{{ res.error }}@if (res.step) { (étape « {{ res.step }} »)}</span> }
+                      @if (res.sha) { <span class="pj-hint">Commit : <code>{{ shortSha(res.sha) }}</code></span> }
+                    </div>
+                    <span class="pj-badge" [class.pj-ok]="res.ok" [class.pj-ko]="!res.ok">{{ res.ok ? 'réussi' : 'en échec' }}</span>
+                  </li>
+                }
+              </ul>
+            }
+            @if (mr.skipped.length) {
+              <p class="pj-warn-text">Non tentés :</p>
+              <ul class="pj-list" data-testid="modules-skipped">
+                @for (s of mr.skipped; track s.module) {
+                  <li><span class="pj-item-name">{{ s.module }}</span><span class="pj-hint">{{ s.reason }}</span></li>
                 }
               </ul>
             }
@@ -143,7 +169,7 @@ export class JobSuiviComponent implements OnChanges, OnDestroy {
    * sans test. Il n'est alors NI dit « réussi » NI montré en vert : seul compte le bilan par app.
    */
   private mixed(j: Job): boolean {
-    return j.kind === 'tests_all' && j.state === 'succeeded' && !runAllSummary(j.result?.results).allOk;
+    return j.kind === 'tests_all' && j.state === 'succeeded' && !runAllSummary(testsAllResults(j)).allOk;
   }
   good(j: Job): boolean { return j.state === 'succeeded' && !this.mixed(j); }
   bad(j: Job): boolean { return j.state === 'failed' || this.mixed(j); }
@@ -151,6 +177,10 @@ export class JobSuiviComponent implements OnChanges, OnDestroy {
     return this.mixed(j) ? 'terminé — tout n\'est pas vérifié' : STATE_LABELS[j.state] ?? j.state;
   }
   verdicts(j: Job): DeployTests | null { return deployVerdicts(j.result); }
+  /** « Tout tester » : un verdict par app. Jamais pour un job `modules`, dont `results` a une autre forme. */
+  allResults(j: Job): TestsAllRow[] | null { return testsAllResults(j); }
+  modules(j: Job): ModulesResult | null { return modulesResult(j); }
+  action(a: string): string { return moduleActionLabel(a); }
   cases(j: Job): JobTestCase[] { return testCases(j.result); }
   verdict(v: string): string { return verdictLabel(v); }
 }

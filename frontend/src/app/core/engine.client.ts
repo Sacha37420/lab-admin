@@ -263,7 +263,7 @@ export interface NameCheck { ok: boolean; reasons: string[]; }
 
 // ── §3.3 – §3.6 ───────────────────────────────────────────────────────────────
 
-export type JobKind = 'create' | 'deploy' | 'tests' | 'tests_all' | 'preview';
+export type JobKind = 'create' | 'deploy' | 'tests' | 'tests_all' | 'preview' | 'modules';
 export type JobState = 'queued' | 'running' | 'succeeded' | 'failed';
 export interface JobTicket { job_id: string; kind: JobKind; app: string; state: JobState; jobs_ahead: number; }
 
@@ -570,8 +570,13 @@ export interface JobResult {
   auto_deploy_available?: boolean;
   rollback_complete?: boolean;
   rollback?: string[];
-  /** `tests_all` : un résultat par app testée. */
-  results?: { app: string; verdict: CloisonnementVerdict | string; cases?: CloisonnementCase[] }[];
+  /**
+   * `tests_all` : un résultat par app testée ; `modules` (I4) : un résultat par
+   * pas — forme différente, à lire par `modulesResult()`, jamais directement.
+   */
+  results?: TestsAllRow[] | unknown[];
+  /** `modules` (I4) : pas sautés. À lire par `modulesResult()`. */
+  skipped?: unknown[];
   found?: boolean;
   all_passed?: boolean;
   summary?: string;
@@ -596,6 +601,16 @@ export interface Job {
   result: JobResult | null;
 }
 
+/** Une ligne de `results` d'un job `tests_all`. */
+export interface TestsAllRow { app: string; verdict: CloisonnementVerdict | string; cases?: CloisonnementCase[]; }
+
+/** `results` d'un job `tests_all` (ou de tout `kind` qui en rend, sauf `modules`), sinon `null`. */
+export function testsAllResults(job: Pick<Job, 'kind' | 'result'> | null): TestsAllRow[] | null {
+  if (!job || job.kind === 'modules') return null;
+  const r = job.result?.results;
+  return Array.isArray(r) ? r as TestsAllRow[] : null;
+}
+
 /** Verdicts d'un déploiement, ou null si `tests` est la liste des cas d'un job `tests`. */
 export function deployVerdicts(result: JobResult | null): DeployTests | null {
   const t = result?.tests;
@@ -606,6 +621,405 @@ export function deployVerdicts(result: JobResult | null): DeployTests | null {
 export function testCases(result: JobResult | null): JobTestCase[] {
   const t = result?.tests;
   return Array.isArray(t) ? t : [];
+}
+
+// ── Modules (chantier « modules », contrat v1, I4 — formes d'I2 rendues telles quelles) ──
+
+export type ModuleCategory = 'socle' | 'cadriciel' | 'application';
+export type ModuleState = 'installed' | 'stopped' | 'not_installed' | 'inaccessible' | 'absent' | 'invalid';
+export type ModuleSource = 'module' | 'catalogue' | 'deduced';
+export type ModuleAction = 'install' | 'reinstall' | 'keep';
+export type ModuleBlockedCause =
+  | 'unknown' | 'inaccessible' | 'absent' | 'invalid' | 'cycle' | 'no_autodeploy' | 'system'
+  | 'domain' | 'interface' | 'socle' | 'engine_self' | 'dependency';
+
+/**
+ * Un réglage déclaré par un module : sa CLÉ et s'il est réglé, JAMAIS sa valeur.
+ * Ce type ne déclare volontairement aucun champ de valeur, et `toModuleSetting`
+ * ne recopie que ces cinq champs : une valeur égarée dans une réponse n'atteint
+ * ni l'écran ni l'état de la page.
+ */
+export interface ModuleSetting { key: string; question: string; required: boolean; secret: boolean; set: boolean; }
+
+export interface ModuleResources {
+  build_ram_mb: number | null;
+  disk_mb: number | null;
+  build_minutes: number | null;
+  heavy_build: boolean;
+}
+
+export interface ModuleRequirement { name: string; interface: string | null; }
+export interface ModuleSystemRequirement { command: string; min_version: string | null; why: string | null; }
+
+export interface ModuleItem {
+  name: string;
+  label: string;
+  description: string;
+  category: ModuleCategory | string;
+  required: boolean;
+  owner: string | null;
+  path: string | null;
+  source: ModuleSource | string;
+  valid: boolean;
+  errors: string[];
+  state: ModuleState | string;
+  containers: { running: number; total: number };
+  no_autodeploy: boolean;
+  selected: boolean;
+  priority: number | null;
+  provides: { interface: string | null };
+  requires: { modules: ModuleRequirement[]; system: ModuleSystemRequirement[]; domain: boolean };
+  resources: ModuleResources;
+  settings: ModuleSetting[];
+  groups: string[];
+  install: { script: string; windows: string | null; timeout_s: number | null } | null;
+  deployed: { sha: string | null; at: string | null } | null;
+}
+
+export interface ModuleSelection { memorized: boolean; modules: string[]; updated_at: string | null; by: string | null; }
+
+/** `GET /modules` : `list --json` d'I2, plus `job` (le job `modules` en cours ou en file). */
+export interface ModuleList { selection: ModuleSelection; modules: ModuleItem[]; job: string | null; }
+
+export interface ModuleCheck {
+  what: string;
+  /** `null` : non vérifiable ici. */
+  ok: boolean | null;
+  detail: string;
+  /** Sortie du script `--check` du module (`hook`), sinon []. */
+  output: string[];
+}
+
+/** `GET /modules/{name}` ; `checks`/`ok` seulement avec `?check=1`. */
+export interface ModuleDetail extends ModuleItem { checks: ModuleCheck[] | null; ok: boolean | null; }
+
+export interface ModulePlanStep {
+  module: string;
+  action: ModuleAction | string;
+  reason: string;
+  hook: boolean;
+  resources: ModuleResources;
+  settings: ModuleSetting[];
+}
+export interface ModulePlanBlocked { module: string; cause: ModuleBlockedCause | string; reason: string; }
+export interface ModuleSettingMissing { module: string; key: string; question: string; required: boolean; secret: boolean; }
+
+/** `POST /modules/plan` : `plan --json --for-engine` d'I2, tel quel. */
+export interface ModulePlan {
+  ok: boolean;
+  requested: string[];
+  reinstall: boolean;
+  with_deps: boolean;
+  steps: ModulePlanStep[];
+  blocked: ModulePlanBlocked[];
+  settings_missing: ModuleSettingMissing[];
+  warnings: string[];
+}
+
+/** Corps de `POST /modules/plan` et `/modules/install` (I4). */
+export interface ModulePlanRequest { modules: string[]; reinstall: boolean; with_deps: boolean; }
+/**
+ * `POST /modules/install`. `settings` est EN ÉCRITURE SEULE : les valeurs
+ * partent une fois, ne sont jamais relues ni rendues par le moteur.
+ */
+export interface ModuleInstallRequest extends ModulePlanRequest { settings?: Record<string, Record<string, string>>; }
+
+/** Réponse de `POST /modules/install` : un ticket de job, plus le plan recalculé par le moteur. */
+export interface ModuleInstallTicket { job_id: string; kind: 'modules'; app: ''; state: JobState; jobs_ahead: number; plan: ModulePlan; }
+
+export interface ModuleStepResult {
+  module: string;
+  action: ModuleAction | string;
+  ok: boolean;
+  step: string | null;
+  sha: string | null;
+  error: string | null;
+}
+/** `result` d'un job `kind: "modules"` (I4). */
+export interface ModulesResult {
+  ok: boolean;
+  step: string | null;
+  results: ModuleStepResult[];
+  skipped: { module: string; reason: string }[];
+  error: string | null;
+}
+
+/** Règle d'I4 pour un nom de module. */
+export const MODULE_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/;
+/** I4 : de 1 à 20 noms par demande. */
+export const MODULES_MAX = 20;
+/** I4 : une valeur de réglage fait au plus 4096 caractères. */
+export const MODULE_SETTING_MAX = 4096;
+
+function obj(v: unknown): Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {};
+}
+function text(v: unknown): string { return typeof v === 'string' ? v : ''; }
+function strList(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x !== '') : [];
+}
+function count(v: unknown): number { return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0; }
+
+export function toModuleSetting(raw: unknown): ModuleSetting | null {
+  const o = obj(raw);
+  const key = str(o['key']);
+  if (!key) return null;
+  return { key, question: text(o['question']), required: o['required'] === true, secret: o['secret'] !== false, set: o['set'] === true };
+}
+
+function toSettings(raw: unknown): ModuleSetting[] {
+  return Array.isArray(raw) ? raw.map(toModuleSetting).filter((s): s is ModuleSetting => s !== null) : [];
+}
+
+function toResources(raw: unknown): ModuleResources {
+  const o = obj(raw);
+  return { build_ram_mb: num(o['build_ram_mb']), disk_mb: num(o['disk_mb']), build_minutes: num(o['build_minutes']), heavy_build: o['heavy_build'] === true };
+}
+
+/**
+ * Un module tel que la page l'affiche : seuls les champs d'I2 sont repris,
+ * chacun au type attendu ; un champ absent prend une valeur neutre. Un
+ * élément sans `name` est rejeté (`null`).
+ */
+export function toModuleItem(raw: unknown): ModuleItem | null {
+  const o = obj(raw);
+  const name = str(o['name']);
+  if (!name) return null;
+  const req = obj(o['requires']);
+  const modules: ModuleRequirement[] = [];
+  if (Array.isArray(req['modules'])) {
+    for (const m of req['modules']) {
+      const n = str(obj(m)['name']);
+      if (n) modules.push({ name: n, interface: str(obj(m)['interface']) });
+    }
+  }
+  const system: ModuleSystemRequirement[] = [];
+  if (Array.isArray(req['system'])) {
+    for (const m of req['system']) {
+      const c = str(obj(m)['command']);
+      if (c) system.push({ command: c, min_version: str(obj(m)['min_version']), why: str(obj(m)['why']) });
+    }
+  }
+  const inst = o['install'] !== null && typeof o['install'] === 'object' ? obj(o['install']) : null;
+  const dep = o['deployed'] !== null && typeof o['deployed'] === 'object' ? obj(o['deployed']) : null;
+  const ctr = obj(o['containers']);
+  return {
+    name,
+    label: str(o['label']) ?? name,
+    description: text(o['description']),
+    category: str(o['category']) ?? 'application',
+    required: o['required'] === true,
+    owner: str(o['owner']),
+    path: str(o['path']),
+    source: str(o['source']) ?? 'deduced',
+    valid: o['valid'] !== false,
+    errors: strList(o['errors']),
+    state: str(o['state']) ?? 'unknown',
+    containers: { running: count(ctr['running']), total: count(ctr['total']) },
+    no_autodeploy: o['no_autodeploy'] === true,
+    selected: o['selected'] === true,
+    priority: num(o['priority']),
+    provides: { interface: str(obj(o['provides'])['interface']) },
+    requires: { modules, system, domain: req['domain'] === true },
+    resources: toResources(o['resources']),
+    settings: toSettings(o['settings']),
+    groups: strList(o['groups']),
+    install: inst && str(inst['script']) ? { script: str(inst['script'])!, windows: str(inst['windows']), timeout_s: num(inst['timeout_s']) } : null,
+    deployed: dep ? { sha: str(dep['sha']), at: dateStr(dep['at']) } : null,
+  };
+}
+
+/** `GET /modules`, quelle que soit la forme reçue. */
+export function toModuleList(raw: unknown): ModuleList {
+  const o = obj(raw);
+  const sel = obj(o['selection']);
+  const modules = Array.isArray(o['modules'])
+    ? o['modules'].map(toModuleItem).filter((m): m is ModuleItem => m !== null) : [];
+  return {
+    selection: { memorized: sel['memorized'] === true, modules: strList(sel['modules']), updated_at: dateStr(sel['updated_at']), by: str(sel['by']) },
+    modules,
+    job: str(o['job']),
+  };
+}
+
+/** `GET /modules/{name}[?check=1]`. `null` si la réponse ne décrit aucun module. */
+export function toModuleDetail(raw: unknown): ModuleDetail | null {
+  const item = toModuleItem(raw);
+  if (!item) return null;
+  const o = obj(raw);
+  let checks: ModuleCheck[] | null = null;
+  if (Array.isArray(o['checks'])) {
+    checks = [];
+    for (const c of o['checks']) {
+      const co = obj(c);
+      const what = str(co['what']);
+      if (!what) continue;
+      checks.push({ what, ok: typeof co['ok'] === 'boolean' ? co['ok'] : null, detail: text(co['detail']), output: strList(co['output']).slice(0, 200) });
+    }
+  }
+  return { ...item, checks, ok: typeof o['ok'] === 'boolean' ? o['ok'] : null };
+}
+
+/**
+ * Le plan tel que la page l'affiche. `ok` ne vaut `true` que sur un `true`
+ * exact : un plan abîmé n'est jamais présenté comme installable.
+ */
+export function toModulePlan(raw: unknown): ModulePlan {
+  const o = obj(raw);
+  const steps: ModulePlanStep[] = [];
+  if (Array.isArray(o['steps'])) {
+    for (const s of o['steps']) {
+      const so = obj(s);
+      const module = str(so['module']);
+      if (!module) continue;
+      steps.push({ module, action: str(so['action']) ?? 'keep', reason: text(so['reason']), hook: so['hook'] === true,
+                   resources: toResources(so['resources']), settings: toSettings(so['settings']) });
+    }
+  }
+  const blocked: ModulePlanBlocked[] = [];
+  if (Array.isArray(o['blocked'])) {
+    for (const b of o['blocked']) {
+      const bo = obj(b);
+      const module = str(bo['module']);
+      if (module) blocked.push({ module, cause: str(bo['cause']) ?? 'unknown', reason: str(bo['reason']) ?? `${module} est bloqué.` });
+    }
+  }
+  const missing: ModuleSettingMissing[] = [];
+  if (Array.isArray(o['settings_missing'])) {
+    for (const m of o['settings_missing']) {
+      const mo = obj(m);
+      const module = str(mo['module']);
+      const key = str(mo['key']);
+      if (module && key) missing.push({ module, key, question: text(mo['question']), required: mo['required'] === true, secret: mo['secret'] !== false });
+    }
+  }
+  return {
+    ok: o['ok'] === true,
+    requested: strList(o['requested']),
+    reinstall: o['reinstall'] === true,
+    with_deps: o['with_deps'] === true,
+    steps, blocked, settings_missing: missing,
+    warnings: strList(o['warnings']),
+  };
+}
+
+/** `result` d'un job `modules` (I4), ou `null` si le job n'en est pas un ou n'a pas de résultat. */
+export function modulesResult(job: Pick<Job, 'kind' | 'result'> | null): ModulesResult | null {
+  if (!job || job.kind !== 'modules' || !job.result) return null;
+  const o = obj(job.result);
+  const results: ModuleStepResult[] = [];
+  if (Array.isArray(o['results'])) {
+    for (const r of o['results']) {
+      const ro = obj(r);
+      const module = str(ro['module']);
+      if (!module) continue;
+      results.push({ module, action: str(ro['action']) ?? 'install', ok: ro['ok'] === true, step: str(ro['step']),
+                     sha: str(ro['sha']), error: str(ro['error']) });
+    }
+  }
+  const skipped: { module: string; reason: string }[] = [];
+  if (Array.isArray(o['skipped'])) {
+    for (const s of o['skipped']) {
+      const module = str(obj(s)['module']);
+      if (module) skipped.push({ module, reason: text(obj(s)['reason']) });
+    }
+  }
+  return { ok: o['ok'] === true, step: str(o['step']), results, skipped, error: str(o['error']) };
+}
+
+/** Corps de `plan` : noms sans doublon, dans l'ordre de la sélection, booléens stricts. */
+export function moduleRequestBody(modules: string[], reinstall: boolean, withDeps: boolean): ModulePlanRequest {
+  return { modules: [...new Set(modules)], reinstall: reinstall === true, with_deps: withDeps === true };
+}
+
+/**
+ * Corps d'`install` : celui de `plan`, plus `settings` — seules les valeurs NON
+ * VIDES des clés que le plan demande (`settings_missing`) partent ; un module
+ * sans valeur saisie n'apparaît pas, et la clé `settings` est absente s'il n'y
+ * a rien. Une valeur saisie pour une clé que le plan ne demande plus est jetée.
+ */
+export function moduleInstallBody(req: ModulePlanRequest, missing: ModuleSettingMissing[],
+                                  values: Record<string, Record<string, string>>): ModuleInstallRequest {
+  const body: ModuleInstallRequest = { ...moduleRequestBody(req.modules, req.reinstall, req.with_deps) };
+  const settings: Record<string, Record<string, string>> = {};
+  for (const m of missing) {
+    const v = values[m.module]?.[m.key];
+    if (typeof v !== 'string' || v === '') continue;
+    (settings[m.module] ??= {})[m.key] = v;
+  }
+  if (Object.keys(settings).length) body.settings = settings;
+  return body;
+}
+
+/** Défauts de saisie des réglages avant envoi ; le moteur fait foi. */
+export function moduleSettingsProblems(missing: ModuleSettingMissing[], values: Record<string, Record<string, string>>): string[] {
+  const out: string[] = [];
+  for (const m of missing) {
+    const v = values[m.module]?.[m.key] ?? '';
+    if (m.required && v === '') out.push(`${m.module} : ${m.key} est requis.`);
+    if (v.length > MODULE_SETTING_MAX) out.push(`${m.module} : ${m.key} dépasse ${MODULE_SETTING_MAX} caractères.`);
+    if (/[\r\n]/.test(v)) out.push(`${m.module} : ${m.key} ne doit pas contenir de retour à la ligne.`);
+  }
+  return out;
+}
+
+export const MODULE_STATE_TEXT: Record<ModuleState, { label: string; tone: '' | 'ok' | 'warn' | 'ko' }> = {
+  installed: { label: 'installé', tone: 'ok' },
+  stopped: { label: 'arrêté', tone: 'ko' },
+  not_installed: { label: 'non installé', tone: '' },
+  inaccessible: { label: 'inaccessible', tone: 'warn' },
+  absent: { label: 'absent', tone: 'warn' },
+  invalid: { label: 'description invalide', tone: 'ko' },
+};
+export function moduleStateLabel(state: string): { label: string; tone: '' | 'ok' | 'warn' | 'ko' } {
+  return (MODULE_STATE_TEXT as Record<string, { label: string; tone: '' | 'ok' | 'warn' | 'ko' }>)[state] ?? { label: state, tone: 'warn' };
+}
+
+/** Explication d'un état, pour le détail d'un module. */
+export const MODULE_STATE_HINT: Record<ModuleState, string> = {
+  installed: 'Au moins un de ses conteneurs est en service.',
+  stopped: 'Ses conteneurs existent, aucun ne tourne.',
+  not_installed: 'Son dossier est là, aucun conteneur n\'a été créé.',
+  inaccessible: 'Sous-module déclaré mais non extrait (dossier vide) : son dépôt n\'est peut-être pas accessible.',
+  absent: 'Décrit au catalogue du lab, mais son dossier n\'existe pas.',
+  invalid: 'Sa description est refusée : corrigez-la avant toute installation.',
+};
+
+const CATEGORY_LABELS: Record<ModuleCategory, string> = { socle: 'Socle', cadriciel: 'Cadriciel', application: 'Application' };
+export function moduleCategoryLabel(c: string): string { return (CATEGORY_LABELS as Record<string, string>)[c] ?? c; }
+
+const SOURCE_LABELS: Record<ModuleSource, string> = {
+  module: 'portée par le module (lab-module.json)',
+  catalogue: 'catalogue du lab (modules/<nom>.json)',
+  deduced: 'déduite (aucune description écrite)',
+};
+export function moduleSourceLabel(s: string): string { return (SOURCE_LABELS as Record<string, string>)[s] ?? s; }
+
+const ACTION_LABELS: Record<ModuleAction, string> = { install: 'installation', reinstall: 'réinstallation', keep: 'inchangé' };
+export function moduleActionLabel(a: string): string { return (ACTION_LABELS as Record<string, string>)[a] ?? a; }
+
+/** Ressources de build en clair (« 1 500 Mo de mémoire · build lourd »), ou « — ». */
+export function moduleResourcesLabel(r: ModuleResources): string {
+  const parts: string[] = [];
+  const n = (v: number) => v.toLocaleString('fr-FR');
+  if (r.build_ram_mb !== null) parts.push(`${n(r.build_ram_mb)} Mo de mémoire`);
+  if (r.build_minutes !== null) parts.push(`≈ ${n(r.build_minutes)} min`);
+  if (r.disk_mb !== null) parts.push(`${n(r.disk_mb)} Mo de disque`);
+  if (r.heavy_build) parts.push('build lourd');
+  return parts.length ? parts.join(' · ') : '—';
+}
+
+/**
+ * Le refus d'une route des modules, en clair. `forbidden` : réservé au
+ * superutilisateur (D8) ; `not_found` sur la LISTE : le moteur en service ne
+ * connaît pas encore ces routes.
+ */
+export function modulesErrorText(e: EngineError, where: 'list' | 'other' = 'other'): string {
+  if (e.code === 'forbidden') return 'Réservé au superutilisateur du lab. Votre compte administre le lab, mais seul le superutilisateur installe des modules.';
+  if (where === 'list' && (e.code === 'not_found' || e.code === 'no_engine') && e.status === 404) {
+    return "Le moteur du lab en service ne propose pas encore la gestion des modules.";
+  }
+  return e.detail;
 }
 
 // ── Client ────────────────────────────────────────────────────────────────────
@@ -733,6 +1147,24 @@ export class EngineClient {
   previewDeploy(app: string): Observable<JobTicket> { return this.call('POST', `/projects/${seg(app)}/preview`); }
   /** `stopped: false` : l'adresse ne montrait pas ce projet, rien n'a été arrêté. */
   previewStop(app: string): Observable<PreviewStopped> { return this.call('DELETE', `/projects/${seg(app)}/preview`); }
+
+  // Modules (chantier « modules », I4) — superutilisateur seulement ; c'est le moteur qui refuse.
+  /** Type de retour `unknown` à dessein : passer par `toModuleList()`. */
+  modules(): Observable<unknown> { return this.call('GET', '/modules'); }
+  /** `check` : avec les vérifications (`--check`, jusqu'à 120 s). À passer par `toModuleDetail()`. */
+  module(name: string, check = false): Observable<unknown> {
+    return this.call('GET', `/modules/${seg(name)}`, undefined, check ? { check: '1' } : undefined);
+  }
+  /** À passer par `toModulePlan()`. */
+  modulePlan(req: ModulePlanRequest): Observable<unknown> {
+    return this.call('POST', '/modules/plan', moduleRequestBody(req.modules, req.reinstall, req.with_deps));
+  }
+  /** Les valeurs de `settings` partent une seule fois ; la réponse n'en contient aucune. */
+  moduleInstall(req: ModuleInstallRequest): Observable<ModuleInstallTicket> {
+    const body: ModuleInstallRequest = moduleRequestBody(req.modules, req.reinstall, req.with_deps);
+    if (req.settings && Object.keys(req.settings).length) body.settings = req.settings;
+    return this.call('POST', '/modules/install', body);
+  }
 
   // §4
   job(id: string, tail = 200): Observable<Job> {

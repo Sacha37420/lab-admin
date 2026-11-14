@@ -1,0 +1,325 @@
+<div class="page mod-page">
+  <div class="page-header">
+    <h1 id="mod-title">Modules</h1>
+    <p>Les briques du lab : leur état, ce dont elles dépendent, leurs réglages. Installer un module ou relancer son installation, avec ses dépendances.</p>
+  </div>
+
+  @if (loading()) {
+    <div class="pj-state">Chargement…</div>
+  } @else if (listError(); as e) {
+    @if (e.code === 'forbidden') {
+      <div class="pj-card" data-testid="modules-forbidden">
+        <h2>Réservé au superutilisateur</h2>
+        <p class="pj-hint">{{ listErrorText() }}</p>
+        @if (e.detail && e.detail !== listErrorText()) { <p class="pj-hint">Réponse du moteur : {{ e.detail }}</p> }
+      </div>
+    } @else {
+      <div class="pj-card">
+        <p class="pj-error" role="alert">{{ listErrorText() }}</p>
+        <div><button type="button" class="btn-secondary" (click)="reload()">Réessayer</button></div>
+      </div>
+    }
+  } @else {
+    <section class="pj" aria-labelledby="mod-title">
+
+      <!-- ── Sélection mémorisée ─────────────────────────────────────────── -->
+      @if (list()?.selection; as sel) {
+        <p class="pj-hint" data-testid="modules-selection">
+          @if (sel.memorized) {
+            Sélection mémorisée : {{ sel.modules.length ? sel.modules.join(', ') : 'aucun module facultatif' }}@if (sel.by) { — par {{ sel.by }}}@if (sel.updated_at) {, le {{ sel.updated_at | date: dateFormat }}}.
+          } @else {
+            Aucune sélection mémorisée : le prochain <code>scripts/install.sh</code> retiendra les modules facultatifs installés.
+          }
+        </p>
+      }
+
+      <!-- ── Suivi d'une installation ────────────────────────────────────── -->
+      @if (jobId()) {
+        <div class="pj-card" data-testid="modules-job">
+          <h2>Installation des modules</h2>
+          @if (jobFound()) { <p class="pj-hint">Une installation de modules est déjà en file ou en cours : en voici le suivi.</p> }
+          @if (planFromInstall() && plan(); as p) {
+            <p class="pj-hint">Plan retenu par le moteur : {{ toInstall().length ? installOrder() : 'rien à installer' }}.</p>
+          }
+          <app-job-suivi [jobId]="jobId()" (fini)="onJobDone($event)" />
+          <div><button type="button" class="btn-secondary" (click)="closeJob()">Fermer le suivi</button></div>
+        </div>
+      }
+
+      <!-- ── Barre d'outils : filtres et tri ─────────────────────────────── -->
+      <div class="pj-row pj-toolbar mod-toolbar">
+        <label class="pj-fld">
+          <span>Chercher</span>
+          <input type="text" #q [value]="filter().query" (input)="setFilter({ query: q.value })" autocomplete="off" spellcheck="false" placeholder="nom du module" data-testid="modules-search">
+        </label>
+        <label class="pj-fld">
+          <span>Catégorie</span>
+          <select #cat (change)="setFilter({ category: cat.value })">
+            <option value="" [selected]="!filter().category">Toutes</option>
+            @for (c of categories(); track c) { <option [value]="c" [selected]="filter().category === c">{{ categoryLabel(c) }}</option> }
+          </select>
+        </label>
+        <label class="pj-fld">
+          <span>État</span>
+          <select #st (change)="setFilter({ state: st.value })" data-testid="modules-filter-state">
+            <option value="" [selected]="!filter().state">Tous</option>
+            @for (s of states(); track s) { <option [value]="s" [selected]="filter().state === s">{{ stateLabel(s).label }}</option> }
+          </select>
+        </label>
+        <label class="pj-fld">
+          <span>Type</span>
+          <select #kind (change)="setFilter({ kind: $any(kind.value) })">
+            <option value="" [selected]="!filter().kind">Tous</option>
+            <option value="optional" [selected]="filter().kind === 'optional'">Facultatifs</option>
+            <option value="required" [selected]="filter().kind === 'required'">Obligatoires</option>
+          </select>
+        </label>
+        <div class="mod-sort">
+          <label class="pj-fld">
+            <span>Trier par</span>
+            <select #sk (change)="sortKey.set($any(sk.value))" data-testid="modules-sort">
+              <option value="category" [selected]="sortKey() === 'category'">catégorie</option>
+              <option value="name" [selected]="sortKey() === 'name'">nom</option>
+              <option value="state" [selected]="sortKey() === 'state'">état</option>
+              <option value="weight" [selected]="sortKey() === 'weight'">poids de build</option>
+            </select>
+          </label>
+          <button type="button" class="btn-secondary mod-order" (click)="sortDesc.set(!sortDesc())"
+                  [attr.aria-label]="sortDesc() ? 'Ordre décroissant — passer en croissant' : 'Ordre croissant — passer en décroissant'"
+                  [title]="sortDesc() ? 'Décroissant' : 'Croissant'">{{ sortDesc() ? '↓' : '↑' }}</button>
+        </div>
+        <div class="pj-row pj-toolbar-actions">
+          <button type="button" class="btn-secondary" (click)="reload()">Actualiser</button>
+        </div>
+      </div>
+
+      <!-- ── Liste ───────────────────────────────────────────────────────── -->
+      <p class="pj-hint">{{ visible().length }} module(s) affiché(s) sur {{ modules().length }}.</p>
+      @if (!visible().length) {
+        <div class="pj-state">Aucun module ne correspond à ces filtres.</div>
+      }
+      <ul class="pj-list mod-list" data-testid="modules-list">
+        @for (m of visible(); track m.name) {
+          <li [attr.data-module]="m.name" [class.mod-open]="openName() === m.name">
+            <label class="pj-check mod-pick" [title]="canRequest(m) ? 'Sélectionner pour installer' : 'Le socle s’installe par scripts/install.sh'">
+              <input type="checkbox" [checked]="isSelected(m.name)" (change)="toggleSelect(m, $any($event.target).checked)"
+                     [disabled]="!canRequest(m) || (!isSelected(m.name) && selected().length >= max)"
+                     [attr.aria-label]="'Sélectionner ' + m.name" [attr.data-testid]="'modules-pick-' + m.name">
+            </label>
+            <div class="pj-item-main">
+              <span class="pj-item-name">{{ m.label }}@if (m.label !== m.name) { <code class="mod-name">{{ m.name }}</code> }</span>
+              <div class="pj-meta">
+                <span>{{ categoryLabel(m.category) }}</span>
+                <span>· {{ m.required ? 'obligatoire' : 'facultatif' }}</span>
+                @if (m.requires.modules.length) { <span>· dépend de {{ depNames(m) }}</span> }
+                <span>· {{ resourcesLabel(m.resources) }}</span>
+                @if (settingsSummary(m); as ss) { <span>· {{ ss }}</span> }
+              </div>
+            </div>
+            <div class="pj-row mod-row-end">
+              <span [class]="'pj-badge ' + toneClass(stateLabel(m.state).tone)" [attr.data-testid]="'modules-state-' + m.name">{{ stateLabel(m.state).label }}</span>
+              <button type="button" class="btn-secondary" (click)="toggleDetail(m.name)" [attr.aria-expanded]="openName() === m.name"
+                      [attr.data-testid]="'modules-detail-' + m.name">{{ openName() === m.name ? 'Masquer' : 'Détail' }}</button>
+            </div>
+
+            @if (openName() === m.name) {
+              <div class="mod-detail" [attr.data-testid]="'modules-panel-' + m.name">
+                @if (m.description) { <p class="pj-hint">{{ m.description }}</p> }
+                @if (!m.valid || m.errors.length) {
+                  <p class="pj-error">Description refusée :</p>
+                  <ul class="pj-reasons">@for (e of m.errors; track $index) { <li>{{ e }}</li> }</ul>
+                }
+                <dl class="pj-dl">
+                  <dt>État</dt>
+                  <dd>{{ stateLabel(m.state).label }} — {{ stateHint(m.state) }}
+                    @if (m.containers.total) { ({{ m.containers.running }}/{{ m.containers.total }} conteneur(s) en service) }</dd>
+                  <dt>Catégorie</dt><dd>{{ categoryLabel(m.category) }}, {{ m.required ? 'obligatoire (toujours installé)' : 'facultatif' }}</dd>
+                  @if (m.path) { <dt>Dossier</dt><dd><code>{{ m.path }}</code></dd> }
+                  @if (m.owner) { <dt>Propriétaire</dt><dd>{{ m.owner }}</dd> }
+                  <dt>Description</dt><dd>{{ sourceLabel(m.source) }}</dd>
+                  @if (m.provides.interface) { <dt>Interface</dt><dd>sert la version {{ m.provides.interface }}</dd> }
+                  <dt>Dépend de</dt>
+                  <dd>
+                    @if (!m.requires.modules.length && !m.requires.system.length && !m.requires.domain) { aucun module (en plus du socle) }
+                    @for (r of m.requires.modules; track r.name) { <span class="mod-dep">{{ r.name }}@if (r.interface) { (interface {{ r.interface }})}</span> }
+                    @for (s of m.requires.system; track s.command) {
+                      <span class="mod-dep">commande <code>{{ s.command }}</code>@if (s.min_version) { ≥ {{ s.min_version }}}@if (s.why) { — {{ s.why }}}</span>
+                    }
+                    @if (m.requires.domain) { <span class="mod-dep">un nom de domaine (HTTPS)</span> }
+                  </dd>
+                  @if (dependentsOf(m.name); as deps) { @if (deps.length) { <dt>Utilisé par</dt><dd>{{ deps.join(', ') }}</dd> } }
+                  <dt>Réglages</dt>
+                  <dd>
+                    @if (!m.settings.length) { aucun }
+                    <ul class="mod-settings">
+                      @for (s of m.settings; track s.key) {
+                        <li>
+                          <code>{{ s.key }}</code>
+                          <span [class]="'pj-badge ' + (s.set ? 'pj-ok' : (s.required ? 'pj-ko' : ''))">{{ s.set ? 'réglé' : 'non réglé' }}</span>
+                          @if (s.required) { <span class="pj-badge">requis</span> }
+                          @if (s.secret) { <span class="pj-badge">secret</span> }
+                          @if (s.question) { <span class="pj-hint">{{ s.question }}</span> }
+                        </li>
+                      }
+                    </ul>
+                  </dd>
+                  @if (m.groups.length) { <dt>Groupes d'accès</dt><dd>{{ m.groups.join(', ') }}</dd> }
+                  <dt>Script d'installation</dt>
+                  <dd>@if (m.install; as i) { <code>{{ i.script }}</code>@if (i.timeout_s) { — délai {{ i.timeout_s }} s }@if (i.windows) { ; <code>{{ i.windows }}</code> pour un poste Windows (jamais joué par le lab)} } @else { aucun }</dd>
+                  <dt>Build</dt><dd>{{ resourcesLabel(m.resources) }}@if (m.priority !== null) { · priorité {{ m.priority }} }</dd>
+                  @if (m.deployed; as d) {
+                    <dt>En service</dt>
+                    <dd>@if (d.sha) { <code>{{ shortSha(d.sha) }}</code> }@if (d.at) { — {{ d.at | date: dateFormat }} }</dd>
+                  }
+                  @if (m.no_autodeploy) { <dt>Déploiement</dt><dd>jamais déployé automatiquement (<code>.no-autodeploy</code>)</dd> }
+                  <dt>Sélection</dt><dd>{{ m.required ? 'toujours installé' : (m.selected ? 'dans la sélection mémorisée' : 'hors de la sélection mémorisée') }}</dd>
+                </dl>
+
+                <div class="pj-row">
+                  <button type="button" class="btn-secondary" (click)="check(m.name)" [disabled]="checkBusy()" [attr.data-testid]="'modules-check-' + m.name">
+                    {{ checkBusy() && checkName() === m.name ? 'Vérification… (jusqu’à 2 minutes)' : 'Vérifier' }}
+                  </button>
+                </div>
+                @if (checkName() === m.name) {
+                  @if (checkError(); as e) { <p class="pj-error" role="alert">{{ errorText(e) }}</p> }
+                  @if (checkResult(); as d) {
+                    <div class="mod-checks" [attr.data-testid]="'modules-checks-' + m.name" aria-live="polite">
+                      <p [class]="d.ok === true ? 'pj-success' : d.ok === false ? 'pj-error' : 'pj-hint'">
+                        {{ d.ok === true ? 'Tout ce qui est vérifiable est en ordre.' : d.ok === false ? 'Des points sont à corriger.' : 'Vérification sans conclusion.' }}
+                      </p>
+                      <ul class="pj-list">
+                        @for (c of d.checks ?? []; track $index) {
+                          <li>
+                            <div class="pj-item-main">
+                              <span class="pj-item-name"><code>{{ c.what }}</code></span>
+                              @if (c.detail) { <span class="pj-hint">{{ c.detail }}</span> }
+                              @if (c.output.length) {
+                                <details>
+                                  <summary>Sortie du script ({{ c.output.length }} ligne(s))</summary>
+                                  <pre class="pj-pre">{{ c.output.join('\n') }}</pre>
+                                </details>
+                              }
+                            </div>
+                            <span [class]="'pj-badge ' + checkTone(c.ok)">{{ checkText(c.ok) }}</span>
+                          </li>
+                        }
+                      </ul>
+                    </div>
+                  }
+                }
+              </div>
+            }
+          </li>
+        }
+      </ul>
+
+      <!-- ── Installer : sélection, options, plan ────────────────────────── -->
+      <div class="pj-card mod-install" data-testid="modules-install">
+        <h2>Installer ou réinstaller</h2>
+        @if (!selected().length) {
+          <p class="pj-hint">Cochez un ou plusieurs modules dans la liste (au plus {{ max }}). Le socle (<code>sso-lab</code>, <code>infra</code>, <code>runner</code>) s'installe par <code>scripts/install.sh</code>, jamais ici.</p>
+        } @else {
+          <p>Sélection : <strong data-testid="modules-selected">{{ selected().join(', ') }}</strong>
+            <button type="button" class="btn-secondary mod-inline" (click)="clearSelection()">Tout décocher</button></p>
+        }
+        <div class="pj-row">
+          <label class="pj-check"><input type="checkbox" [checked]="reinstall()" (change)="setReinstall($any($event.target).checked)" data-testid="modules-reinstall"> Réinstaller (même s'il est déjà en service)</label>
+          <label class="pj-check"><input type="checkbox" [checked]="withDeps()" (change)="setWithDeps($any($event.target).checked)" data-testid="modules-with-deps"> Avec ses dépendances</label>
+        </div>
+        <p class="pj-hint">Sans « avec ses dépendances », une dépendance déjà en service reste telle quelle ; avec les deux options, elle est réinstallée aussi.</p>
+        <div class="pj-row">
+          <button type="button" class="btn-primary" (click)="askPlan()" [disabled]="!selected().length || planBusy() || !!jobId()" data-testid="modules-plan-btn">
+            {{ planBusy() ? 'Calcul du plan…' : 'Voir le plan' }}
+          </button>
+        </div>
+        @if (planError(); as e) {
+          <p class="pj-error" role="alert">{{ errorText(e) }}</p>
+          @if (e.reasons.length) { <ul class="pj-reasons">@for (r of e.reasons; track $index) { <li>{{ r }}</li> }</ul> }
+        }
+
+        @if (plan(); as p) {
+          @if (!planFromInstall()) {
+          <div class="mod-plan" data-testid="modules-plan" aria-live="polite">
+            <h3>Plan</h3>
+            @if (!p.ok) {
+              <p class="pj-error">Un module demandé est bloqué : rien ne sera lancé tel quel.</p>
+            }
+            @if (toInstall().length) {
+              <p>Seront installés dans cet ordre :</p>
+              <ol class="mod-steps" data-testid="modules-plan-steps">
+                @for (s of toInstall(); track s.module) {
+                  <li>
+                    <strong>{{ s.module }}</strong> — {{ actionLabel(s.action) }} <span class="pj-hint">({{ s.reason }})</span>
+                    <div class="pj-meta">
+                      <span>{{ resourcesLabel(s.resources) }}</span>
+                      @if (s.hook) { <span>· script d'installation du module joué avant le build</span> }
+                    </div>
+                  </li>
+                }
+              </ol>
+            } @else if (p.ok) {
+              <p class="pj-hint">Rien à installer : tout est déjà en service. Cochez « Réinstaller » pour relancer leur installation.</p>
+            }
+            @if (kept().length) {
+              <p>Restent inchangés :</p>
+              <ul class="mod-plain">
+                @for (s of kept(); track s.module) { <li><strong>{{ s.module }}</strong> <span class="pj-hint">({{ s.reason }})</span></li> }
+              </ul>
+            }
+            @if (p.blocked.length) {
+              <p class="pj-error">Bloqués :</p>
+              <ul class="pj-reasons" data-testid="modules-plan-blocked">
+                @for (b of p.blocked; track b.module) { <li><strong>{{ b.module }}</strong> : {{ b.reason }}</li> }
+              </ul>
+            }
+            @if (p.warnings.length) {
+              <p class="pj-warn-text">Avertissements :</p>
+              <ul class="mod-plain pj-warn-text">@for (w of p.warnings; track $index) { <li>{{ w }}</li> }</ul>
+            }
+            @if (toInstall().length) {
+              <p class="pj-hint">Les builds passent un par un sur l'hôte : comptez la durée de chacun.</p>
+            }
+
+            <!-- Réglages manquants : écriture seule, jamais réaffichés. -->
+            @if (p.settings_missing.length && toInstall().length) {
+              <div class="pj-form mod-settings-form" role="group" aria-label="Réglages à fournir" data-testid="modules-settings">
+                <h3>Réglages à fournir</h3>
+                <p class="pj-hint">Envoyés une seule fois avec l'installation, puis effacés de cette page. Un champ facultatif laissé vide reste non réglé.</p>
+                <!-- `formGeneration` dans la clé de suivi : après un effacement, les champs sont recréés vides. -->
+                @for (s of p.settings_missing; track s.module + '/' + s.key + '/' + formGeneration()) {
+                    <label class="pj-fld">
+                      <span>{{ s.module }} — <code>{{ s.key }}</code>@if (s.required) { <span class="pj-error"> (requis)</span> }</span>
+                      @if (s.question) { <small class="pj-hint">{{ s.question }}</small> }
+                      <input [id]="fieldId(s)" [type]="s.secret ? 'password' : 'text'" [name]="fieldId(s)"
+                             [ngModel]="val(s)" (ngModelChange)="setVal(s, $event)" [ngModelOptions]="{ standalone: true }"
+                             [attr.autocomplete]="s.secret ? 'new-password' : 'off'" spellcheck="false" maxlength="4096"
+                             [attr.aria-required]="s.required" [attr.data-testid]="'modules-setting-' + s.key">
+                    </label>
+                }
+              </div>
+            }
+            @if (problems().length && toInstall().length) {
+              <ul class="pj-reasons">@for (x of problems(); track $index) { <li>{{ x }}</li> }</ul>
+            }
+
+            <div class="pj-row">
+              <button #installBtn type="button" class="btn-primary" (click)="confirmInstall(installBtn)" [disabled]="!canInstall()" data-testid="modules-install-btn">
+                {{ installBusy() ? 'Envoi…' : 'Installer…' }}
+              </button>
+              @if (list()?.job && !jobId()) { <span class="pj-hint">Une installation est déjà en cours.</span> }
+            </div>
+          </div>
+          }
+        }
+        @if (installError(); as e) {
+          <div role="alert">
+            <p class="pj-error">{{ errorText(e) }}</p>
+            @if (e.reasons.length) { <ul class="pj-reasons" data-testid="modules-install-reasons">@for (r of e.reasons; track $index) { <li>{{ r }}</li> }</ul> }
+            @if (e.code === 'invalid') { <p class="pj-hint">Les valeurs saisies ont été effacées : saisissez-les de nouveau si besoin.</p> }
+          </div>
+        }
+      </div>
+    </section>
+  }
+  <app-confirm />
+</div>
