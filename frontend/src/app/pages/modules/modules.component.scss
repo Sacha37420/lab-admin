@@ -1,0 +1,44 @@
+// Page « Modules » — tokens de styles.scss uniquement (aucune couleur en dur).
+.mod-page { max-width: 1100px; }
+
+.mod-toolbar { align-items: flex-end; }
+.mod-toolbar .pj-fld { flex: 1 1 150px; }
+.mod-sort { display: flex; align-items: flex-end; gap: var(--space-2); flex: 1 1 200px; min-width: 0; }
+.mod-order { min-width: 44px; padding: 0 var(--space-3); }
+
+.mod-list > li { align-items: flex-start; }
+.mod-list > li.mod-open { border-color: var(--accent); }
+.mod-pick { padding: 0; min-width: 44px; justify-content: center; }
+.mod-name { margin-left: var(--space-2); font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-mute); font-weight: 400; }
+.mod-row-end { margin-left: auto; }
+
+.mod-detail {
+  flex-basis: 100%; min-width: 0;
+  display: flex; flex-direction: column; gap: var(--space-3);
+  border-top: 1px solid var(--border); padding-top: var(--space-3);
+  code { font-family: var(--font-mono); color: var(--accent-deep); overflow-wrap: anywhere; }
+}
+.mod-dep { display: block; }
+.mod-settings {
+  list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2);
+  > li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+}
+.mod-checks .pj-list > li { background: var(--card); }
+
+.mod-inline { margin-left: var(--space-2); }
+.mod-plan {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  border-top: 1px solid var(--border); padding-top: var(--space-3); font-size: var(--text-sm); color: var(--text);
+}
+.mod-steps, .mod-plain {
+  margin: 0; padding-left: var(--space-6); display: flex; flex-direction: column; gap: var(--space-2);
+  overflow-wrap: anywhere;
+}
+.mod-settings-form { border-top: 1px solid var(--border); padding-top: var(--space-3); }
+
+@media (max-width: 899px) {
+  .mod-row-end { margin-left: 0; width: 100%; justify-content: space-between; }
+  .mod-row-end > .btn-secondary { flex: 0 0 auto; }
+  .mod-pick { order: 0; }
+  .pj-dl { grid-template-columns: 1fr; }
+}
