@@ -544,3 +544,53 @@ class KeycloakAdminErrorMessageTests(TestCase):
                 self.kc.all_groups()
         self.assertIn('Appel Keycloak échoué', str(ctx.exception))
         self.assertNotIn('marqueur-url', str(ctx.exception))
+
+
+# ── Création d'utilisateur : un corps mal formé est un refus, pas une erreur 500 ──
+
+@override_settings(EMAIL_HOST='smtp.exemple.org', DEFAULT_FROM_EMAIL='lab@exemple.org',
+                   EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class UserCreationBodyTests(TestCase):
+
+    BODY = {'username': 'nouveau', 'first_name': 'N', 'last_name': 'U',
+            'email': 'nouveau@exemple.org', 'groups': ['famille']}
+
+    def setUp(self) -> None:
+        p = mock.patch('api.views.keycloak_admin')
+        self.kc = p.start()
+        self.addCleanup(p.stop)
+        self.kc.find_user_by_username.return_value = None
+        self.kc.find_user_by_email.return_value = None
+        self.kc.all_groups.return_value = [{'id': 'g1', 'name': 'famille'}]
+        self.kc.create_user.return_value = 'uid-1'
+        self.admin = client_for('sacha', ADMINS)
+
+    def test_malformed_bodies_are_400_and_create_nothing(self):
+        for body in ({**self.BODY, 'username': 5}, {**self.BODY, 'email': ['a@b.c']},
+                     {**self.BODY, 'groups': [1]}, {**self.BODY, 'groups': {'famille': 1}},
+                     {**self.BODY, 'groups': 'famille'}, [1], ['username']):
+            with self.subTest(body=body):
+                resp = self.admin.post('/api/lab-users/', body, format='json')
+                self.assertEqual(resp.status_code, 400, resp.content)
+        self.kc.create_user.assert_not_called()
+
+    def test_well_formed_body_still_creates(self):
+        self.assertEqual(self.admin.post('/api/lab-users/', self.BODY, format='json').status_code, 201)
+
+
+@override_settings(KEYCLOAK_REQUIRED_GROUPS='admins,developers', KEYCLOAK_CLIENT_ID='lab-admin')
+class TokenWithoutExpTests(TestCase):
+    """PyJWT ne vérifie `exp` que s'il est présent : un jeton signé sans
+    échéance est refusé."""
+
+    def setUp(self) -> None:
+        patcher = mock.patch.object(KeycloakJWTAuthentication, '_get_jwks_client',
+                                    classmethod(lambda cls: _LocalJwks()))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_token_without_exp_is_refused(self):
+        tok = jwt.encode({'preferred_username': 'sacha', 'groups': ['admins', 'developers'],
+                          'azp': 'lab-admin', 'email': 'sacha@ssolab.local'}, _RSA, algorithm='RS256')
+        self.assertEqual(APIClient().get('/api/tools/', HTTP_AUTHORIZATION=f'Bearer {tok}').status_code, 403)
+        self.assertEqual(APIClient().get('/api/tools/', HTTP_AUTHORIZATION=f"Bearer {token('sacha', ['admins'])}").status_code, 200)

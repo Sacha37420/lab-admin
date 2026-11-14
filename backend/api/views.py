@@ -85,11 +85,23 @@ class LabUserCreateView(APIView):
 
     def post(self, request):
         data = request.data
-        username = (data.get('username') or '').strip()
-        first_name = (data.get('first_name') or '').strip()
-        last_name = (data.get('last_name') or '').strip()
-        email = (data.get('email') or '').strip()
+        if not isinstance(data, dict):
+            return Response({'error': 'Corps attendu : un objet JSON.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        def _text(value) -> str:
+            # Un nombre ou une liste à la place d'un texte faisait lever
+            # `.strip()` : 500 au lieu d'un refus.
+            return value.strip() if isinstance(value, str) else ''
+
+        username = _text(data.get('username'))
+        first_name = _text(data.get('first_name'))
+        last_name = _text(data.get('last_name'))
+        email = _text(data.get('email'))
         group_names = data.get('groups') or []
+        if not isinstance(group_names, list) or not all(isinstance(g, str) for g in group_names):
+            return Response({'error': 'groups : une liste de noms de groupe est attendue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         if not username or not first_name or not last_name or not email:
             return Response(
