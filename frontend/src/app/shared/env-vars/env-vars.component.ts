@@ -72,7 +72,7 @@ import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.compone
           @if (shown()) {
             <p class="pj-hint">La valeur affichée se masque en quittant la page ou en changeant d'onglet, et d'elle-même après 2 minutes. Chaque affichage est journalisé.</p>
           }
-          <form class="pj-form" (ngSubmit)="save()" autocomplete="off">
+          <form class="pj-form" (ngSubmit)="save(saveBtn)" autocomplete="off">
             <div class="pj-row">
               <label class="pj-fld">
                 <span>Clé</span>
@@ -85,7 +85,7 @@ import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.compone
             </div>
             @if (editing()) { <p class="pj-hint">La valeur actuelle n'est pas reprise ici : saisissez la nouvelle, elle remplacera l'ancienne.</p> }
             @if (key && !keyOk) { <p class="pj-hint">Clé : majuscules, chiffres et « _ », en commençant par une lettre.</p> }
-            <div><button type="submit" class="btn-primary" [disabled]="!keyOk || busy()">Enregistrer</button></div>
+            <div><button type="submit" class="btn-primary" #saveBtn [disabled]="!keyOk || busy()">Enregistrer</button></div>
           </form>
           <p class="pj-hint">Toute modification prend effet au prochain déploiement.</p>
         } @else {
@@ -193,11 +193,26 @@ export class EnvVarsComponent implements OnChanges, OnDestroy {
     setTimeout(() => this.valueInput?.nativeElement.focus());
   }
 
-  save(): void {
+  /** Une clé déjà présente saisie hors « Modifier » remplacerait sa valeur sans retour possible :
+   *  on le demande d'abord (une clé de chiffrement remplacée rend illisible ce qu'elle protégeait). */
+  save(origin?: HTMLElement): void {
     if (!this.canAct || !this.keyOk || this.busy()) return;
+    const key = this.key;
+    if (!this.editing() && this.rows().some(r => r.key === key && !r.managed)) {
+      this.confirm?.ask({
+        title: 'Remplacer cette variable ?',
+        text: `La variable ${key} existe déjà : sa valeur actuelle sera remplacée, sans retour possible (prise en compte au prochain déploiement).`,
+        confirmLabel: 'Remplacer', danger: true,
+      }, origin ?? this.card?.nativeElement ?? document.body, () => this.write(key), this.card?.nativeElement);
+      return;
+    }
+    this.write(key);
+  }
+
+  private write(key: string): void {
+    if (!this.canAct || this.busy() || this.key !== key) return;
     this.busy.set(true);
     this.error.set(''); this.notice.set('');
-    const key = this.key;
     this.engine.envSet(this.app, key, this.value).subscribe({
       next: () => {
         this.busy.set(false);

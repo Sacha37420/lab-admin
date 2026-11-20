@@ -85,11 +85,22 @@ class LabUserCreateView(APIView):
 
     def post(self, request):
         data = request.data
-        username = (data.get('username') or '').strip()
-        first_name = (data.get('first_name') or '').strip()
-        last_name = (data.get('last_name') or '').strip()
-        email = (data.get('email') or '').strip()
+        # Forme du corps vérifiée AVANT tout appel à Keycloak : un tableau, un nombre ou une
+        # liste imbriquée donnaient une erreur 500 au lieu d'un refus.
+        if not isinstance(data, dict):
+            return Response({'error': 'Corps attendu : un objet JSON.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        texts = [data.get(k) or '' for k in ('username', 'first_name', 'last_name', 'email')]
+        if not all(isinstance(t, str) for t in texts):
+            return Response(
+                {'error': 'username, first_name, last_name et email doivent être du texte.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        username, first_name, last_name, email = (t.strip() for t in texts)
         group_names = data.get('groups') or []
+        if not isinstance(group_names, list) or not all(isinstance(g, str) for g in group_names):
+            return Response({'error': 'groups : liste de noms de groupe attendue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         if not username or not first_name or not last_name or not email:
             return Response(
