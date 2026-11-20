@@ -417,6 +417,12 @@ export function smtpProblems(form: SmtpInput): string[] {
   const port = Number(form.port);
   if (!Number.isInteger(port) || port < 1 || port > 65535) out.push('Le port est un nombre entre 1 et 65535.');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.from_email.trim())) out.push("Indiquez l'adresse d'expéditeur (celle qui apparaîtra dans les emails).");
+  // Le moteur refuse identifiant et mot de passe hors ASCII imprimable (API.md §3.8) et le
+  // formulaire efface alors le mot de passe : on le dit avant l'envoi. Sans sécurité, ils ne partent pas.
+  if (form.security !== 'none') {
+    if (!/^[\x20-\x7e]*$/.test(form.username.trim())) out.push("L'identifiant ne peut contenir ni accent ni caractère spécial hors ASCII.");
+    if (!/^[\x20-\x7e]*$/.test(form.password ?? '')) out.push('Le mot de passe ne peut contenir ni accent ni caractère spécial hors ASCII.');
+  }
   return out;
 }
 

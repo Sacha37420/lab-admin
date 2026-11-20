@@ -370,6 +370,38 @@ class UserCreationPasswordTests(TestCase):
         self.assertEqual(len(mail.outbox), 0)
 
 
+class UserCreationInputTests(TestCase):
+    """Corps mal formé : refus 400, jamais une erreur 500, et Keycloak n'est pas appelé."""
+
+    BODY = UserCreationPasswordTests.BODY
+
+    def setUp(self) -> None:
+        p = mock.patch('api.views.keycloak_admin')
+        self.kc = p.start()
+        self.addCleanup(p.stop)
+        self.kc.find_user_by_username.return_value = None
+        self.kc.find_user_by_email.return_value = None
+        self.kc.all_groups.return_value = [{'id': 'g1', 'name': 'famille'}]
+        self.admin = client_for('sacha', ADMINS)
+
+    def _refused(self, body) -> None:
+        resp = self.admin.post('/api/lab-users/', body, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('error', resp.json())
+        self.assertEqual(self.kc.mock_calls, [])
+
+    def test_body_that_is_not_an_object_is_400(self):
+        self._refused(['nouveau'])
+
+    def test_fields_that_are_not_text_are_400(self):
+        self._refused({**self.BODY, 'username': 123})
+        self._refused({**self.BODY, 'email': ['nouveau@exemple.org']})
+
+    def test_groups_that_are_not_a_list_of_names_are_400(self):
+        self._refused({**self.BODY, 'groups': 'famille'})
+        self._refused({**self.BODY, 'groups': [['famille']]})
+
+
 # ── I8 (chantier app-builder-v2) : lien projet ↔ spécification ────────────────
 
 FP_A = 'sha256:' + 'a' * 64
