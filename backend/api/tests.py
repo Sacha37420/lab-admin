@@ -206,6 +206,11 @@ class RealTokenGateTests(TestCase):
                              'exp': int(time.time()) + 300}, other, algorithm='RS256')
         self.assertEqual(self.get('/api/tools/', forged).status_code, 403)
 
+    def test_token_without_exp_is_refused(self):
+        tok = jwt.encode({'preferred_username': 'sacha', 'groups': ['admins'],
+                          'azp': 'lab-admin', 'email': 's@x'}, _RSA, algorithm='RS256')
+        self.assertEqual(self.get('/api/tools/', tok).status_code, 403)
+
 
 # ── F10 (chantier failles) : pgAdmin et phpLDAPadmin par tunnel SSH ──────────
 
@@ -368,6 +373,12 @@ class UserCreationPasswordTests(TestCase):
         self.assertFalse(data['email_sent'])
         self.assertEqual(data['password'], self._set_password())
         self.assertEqual(len(mail.outbox), 0)
+
+    def test_password_response_is_not_cached(self):
+        with mock.patch('api.views.send_mail', side_effect=OSError('connexion refusée')):
+            resp = self.admin.post('/api/lab-users/', self.BODY, format='json')
+        self.assertIn('password', resp.json())
+        self.assertIn('no-store', resp['Cache-Control'])
 
 
 # ── I8 (chantier app-builder-v2) : lien projet ↔ spécification ────────────────
