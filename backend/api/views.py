@@ -174,7 +174,10 @@ class LabUserCreateView(APIView):
         # l'a reçu ; l'admin n'a pas à le voir transiter).
         if not email_sent:
             body['password'] = password
-        return Response(body, status=status.HTTP_201_CREATED)
+        resp = Response(body, status=status.HTTP_201_CREATED)
+        # Réponse qui peut porter un mot de passe : jamais en cache.
+        resp['Cache-Control'] = 'no-store'
+        return resp
 
 
 # ── Lien projet ↔ spécification App Builder (chantier app-builder-v2, I8) ─────────

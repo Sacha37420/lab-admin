@@ -58,6 +58,9 @@ class KeycloakJWTAuthentication(BaseAuthentication):
                 algorithms=['RS256'],
                 options={
                     'verify_exp': True,
+                    # verify_exp seul ne contrôle que si le claim est présent :
+                    # un jeton sans `exp` serait valable pour toujours.
+                    'require': ['exp'],
                     # Audience varies by Keycloak client configuration
                     'verify_aud': False,
                 },
